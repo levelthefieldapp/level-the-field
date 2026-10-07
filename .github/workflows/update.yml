@@ -1,0 +1,221 @@
+# Level the Field: the automatic update.
+#
+# Twice a day in season this gets fresh scores, lines and ratings, rebuilds the site, checks it, and publishes it.
+# If any step fails, nothing is published, the site keeps showing the last good version, and the owner gets an email.
+#
+# The CollegeFootballData key is read from the repository secret named CFBD_API_KEY. It is never written to a file.
+
+name: Update the site
+
+on:
+  schedule:
+    # August through January. Times are UTC: 11:17 is early morning Eastern, 19:17 is mid-afternoon Eastern.
+    - cron: "17 11 * 1,8-12 *"
+    - cron: "17 19 * 1,8-12 *"
+  push:
+    branches: [main]
+    paths-ignore: ["ledger.json", "logos/**", "README.md"]
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Fail on purpose, to test the alert email"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write      # save the ledger of picks on file
+  pages: write         # publish the site
+  id-token: write      # required by the publish step
+  issues: write        # open the note that sends the alert email
+
+concurrency:
+  group: site-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Alert test
+        id: test
+        if: ${{ inputs.test_alert }}
+        run: |
+          echo "This run was asked to fail on purpose, to test the alert email."
+          exit 1
+
+      - name: Check that the API key is in place
+        id: key
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: |
+          if [ -z "$CFBD_API_KEY" ]; then
+            echo "::error::The secret named CFBD_API_KEY is missing."
+            exit 1
+          fi
+
+      - name: Get the site's files
+        id: files
+        uses: actions/checkout@v7
+
+      - name: Find the site's address
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install the libraries
+        id: libs
+        run: pip install --quiet -r requirements.txt
+
+      - name: Get lines and ratings
+        id: api
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: python pull_api.py
+
+      - name: Get scores and rebuild the numbers
+        id: build
+        env:
+          SITE: ${{ steps.pages.outputs.base_url }}
+        run: |
+          if [ -f ledger.json ]; then cp ledger.json ledger.before.json; fi
+          # A second copy of everything on file sits inside the live site. Reading it back means a wrong
+          # upload of an old ledger.json cannot lose a pick. On the very first run there is no live site yet.
+          curl -fsSL --max-time 60 "$SITE/index.html" -o live.html || rm -f live.html
+          if [ -s live.html ]; then python build_data.py --refresh --prev live.html; else python build_data.py --refresh; fi
+
+      - name: Get team logos
+        id: logos
+        if: ${{ vars.LOGOS != 'off' }}
+        continue-on-error: true
+        run: python fetch_logos.py
+
+      - name: Put the site together
+        id: make
+        run: python make_site.py --url "${{ steps.pages.outputs.base_url }}" --logos "${{ vars.LOGOS == 'off' && 'off' || 'on' }}"
+
+      - name: Check the site before it goes live
+        id: check
+        run: python check_site.py --before ledger.before.json --live live.html
+
+      - name: Save the picks on file
+        id: save
+        run: |
+          git config user.name "level-the-field-update"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ledger.json
+          if [ -d logos ]; then git add logos; fi
+          if git diff --cached --quiet; then
+            echo "Nothing new to save."
+          else
+            git commit --quiet -m "Daily update: picks on file and weekly ratings"
+            git push --quiet || (git pull --quiet --rebase && git push --quiet)
+          fi
+
+      - name: Package the site
+        id: pack
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Publish
+        id: publish
+        uses: actions/deploy-pages@v5
+
+      - name: Write the run summary
+        if: ${{ always() }}
+        env:
+          RESULT: ${{ job.status }}
+          SITE: ${{ steps.publish.outputs.page_url }}
+        run: |
+          {
+            if [ "$RESULT" = "success" ]; then
+              echo "### Published"
+              echo "The site was rebuilt and is live at $SITE"
+            else
+              echo "### Not published"
+              echo "This run stopped before publishing. The site is still showing the last good version."
+            fi
+            if [ -f data.json ]; then
+              python - <<'PY'
+          import json
+          d = json.load(open("data.json")); m = d["meta"]
+          fin = sum(1 for g in d["games"] if g["hp"] is not None)
+          print(f"- LTF Index through week {m['through']}")
+          print(f"- {fin} final scores, latest {m['lastLabel']}")
+          print(f"- {len(d['picks'])} picks on file")
+          PY
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Close the alert once an update works again
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for n in $(gh issue list --label "update failed" --state open --json number --jq '.[].number' 2>/dev/null || true); do
+            gh issue close "$n" --comment "The update ran cleanly again and the site is current. Nothing more to do." || true
+          done
+
+      - name: Send the alert if the update failed
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          S_TEST: ${{ steps.test.outcome }}
+          S_KEY: ${{ steps.key.outcome }}
+          S_FILES: ${{ steps.files.outcome }}
+          S_PAGES: ${{ steps.pages.outcome }}
+          S_PYTHON: ${{ steps.python.outcome }}
+          S_LIBS: ${{ steps.libs.outcome }}
+          S_API: ${{ steps.api.outcome }}
+          S_BUILD: ${{ steps.build.outcome }}
+          S_MAKE: ${{ steps.make.outcome }}
+          S_CHECK: ${{ steps.check.outcome }}
+          S_SAVE: ${{ steps.save.outcome }}
+          S_PACK: ${{ steps.pack.outcome }}
+          S_PUBLISH: ${{ steps.publish.outcome }}
+        run: |
+          what="an unexpected step"; hint="Usually nothing to do. The next update runs on its own."
+          if   [ "$S_TEST" = failure ];    then what="the alert test"; hint="This was only a test, and it worked: you are reading the alert. Nothing is wrong with the site."
+          elif [ "$S_KEY" = failure ];     then what="checking the API key"; hint="The secret named CFBD_API_KEY is missing. Add it under Settings, then Secrets and variables, then Actions."
+          elif [ "$S_FILES" = failure ];   then what="getting the site's files"
+          elif [ "$S_PAGES" = failure ];   then what="finding the site's address"; hint="GitHub Pages is not switched on for this repository. Go to Settings, then Pages, and set Source to GitHub Actions."
+          elif [ "$S_PYTHON" = failure ];  then what="setting up Python"
+          elif [ "$S_LIBS" = failure ];    then what="installing the libraries"
+          elif [ "$S_API" = failure ];     then what="getting lines and ratings from CollegeFootballData"; hint="If this repeats, the key may have been rejected or the month's call limit reached. The run log says which."
+          elif [ "$S_BUILD" = failure ];   then what="getting scores and rebuilding the numbers"; hint="The public data files may have been mid-update. If this repeats three times in a row, send the run log to Claude."
+          elif [ "$S_MAKE" = failure ];    then what="putting the site together"; hint="Send the run log to Claude."
+          elif [ "$S_CHECK" = failure ];   then what="the check before going live"; hint="The check found something wrong with the new version and refused to publish it. Send the run log to Claude."
+          elif [ "$S_SAVE" = failure ];    then what="saving the picks on file"
+          elif [ "$S_PACK" = failure ] || [ "$S_PUBLISH" = failure ]; then what="publishing"; hint="GitHub's publishing service may have been down. The next update will try again."
+          fi
+          when=$(TZ=America/New_York date "+%A, %B %-d at %-I:%M %p Eastern")
+          printf '%s\n\n' "The update on $when did not finish. It stopped at: **$what**." > note.md
+          printf '%s\n\n' "The site is still up and still showing the last good version. Nothing from this run was published." >> note.md
+          printf '%s\n\n' "**What to do:** $hint" >> note.md
+          printf '%s\n\n' "This note closes itself the next time an update works. If you get three of these in a row, open the run log, copy the lines marked in red, and send them to Claude." >> note.md
+          printf '%s\n\n' "Run log: $RUN_URL" >> note.md
+          printf '%s\n' "Sent to @$OWNER." >> note.md
+          gh label create "update failed" --color B60205 --description "The site update did not finish" --force >/dev/null 2>&1 || true
+          open=$(gh issue list --label "update failed" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file note.md
+          else
+            gh issue create --title "The site update failed" --body-file note.md --label "update failed" --assignee "$OWNER" \
+              || gh issue create --title "The site update failed" --body-file note.md --label "update failed" \
+              || gh issue create --title "The site update failed" --body-file note.md
+          fi
