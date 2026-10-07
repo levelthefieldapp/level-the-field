@@ -1,0 +1,5 @@
+# The exact versions the update was tested with. Leave these alone unless a run fails on installing them.
+pandas==3.0.5
+numpy==2.5.3
+pyarrow==25.0.1
+pillow==12.3.0

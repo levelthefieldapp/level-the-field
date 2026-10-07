@@ -1,0 +1,33 @@
+
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header class="hbar">
+  <div class="wrap hin">
+    <a class="brand" href="#/" aria-label="Level the Field, front page"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M7 0h23l-7 24H0z" fill="#F2580A"/><path d="M12.5 5l-4.1 14M17.5 5l-4.1 14M22.5 5l-4.1 14" stroke="#fff" stroke-width="2.2"/></svg><span class="brandname">Level the Field</span></a>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="search"><input class="gs" type="search" placeholder="Find a team" aria-label="Find a team, conference or page" autocomplete="off"><div class="sres" hidden></div></div>
+    <button class="menubtn" id="menuBtn" type="button" aria-label="Open the menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 26 26" aria-hidden="true"><path d="M3 7h20M3 13h20M3 19h20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-label="Menu">
+  <div class="mtop"><a class="brand" href="#/"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M7 0h23l-7 24H0z" fill="#F2580A"/><path d="M12.5 5l-4.1 14M17.5 5l-4.1 14M22.5 5l-4.1 14" stroke="#fff" stroke-width="2.2"/></svg><span class="brandname">Level the Field</span></a>
+    <button id="menuClose" type="button" aria-label="Close the menu"><svg viewBox="0 0 26 26" aria-hidden="true"><path d="M5 5l16 16M21 5L5 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>
+  <div class="search"><input class="gs" type="search" placeholder="Find a team" aria-label="Find a team, conference or page" autocomplete="off"><div class="sres" hidden></div></div>
+  <nav id="menunav" aria-label="All pages"></nav>
+</div>
+<div class="subbar" id="subbar" hidden><nav class="wrap subnav" id="subnav" aria-label="Pages in this section"></nav></div>
+<div class="ribbon"><div class="wrap" id="ribbon"></div></div>
+
+<main class="wrap" id="main">
+  <div id="top"></div>
+  <div class="controls" id="controls" hidden>
+    <div class="seg" role="group" aria-label="Which teams to show" id="groupseg"></div>
+    <label>Conference <select id="conf"><option value="">All conferences</option></select></label>
+    <label>Filter this list <input id="find" type="search" autocomplete="off" placeholder="Team name"></label>
+  </div>
+  <section id="view"></section>
+</main>
+<footer class="footband"><div class="wrap foot" id="foot"></div></footer>
+<div class="pop" id="pop" role="tooltip" hidden></div>
+
