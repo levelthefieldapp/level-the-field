@@ -183,7 +183,8 @@ function viewMomentum(){
       <h3>Backing the team with more momentum, against the spread</h3><p class="hint">"Covered" is how often the team with more of that kind of momentum beat the spread. "Strongest fifth" is the same thing for the one game in five where the gap in momentum was widest.</p>
       <div class="scroll"><table class="grid"><thead><tr><th>Kind of momentum</th><th class="num wide">Games</th><th class="num">Covered</th><th class="num">Strongest fifth</th></tr></thead><tbody>${sig}</tbody></table></div>
       <p class="hint after">A bettor needs about 52.4% to break even. No kind of momentum gets there across all games. The strongest cases land anywhere from 47% to 53% with no pattern, which is what chance looks like at these sample sizes.</p></section>`;
-  return {title, controls:true, top: pageTop(title, dek),
+  const hot = scoped[0], cold = scoped[scoped.length - 1];
+  return {title, controls:true, lead: hot && cold && hot !== cold ? `Hottest${groupKey() === 'all' ? '' : ` in the ${esc(groupLabel())}`}: ${tl(hot.t)}, ${fix1(hot.score)}. Coldest: ${tl(cold.t)}, ${fix1(cold.score)}. The scale runs from minus 10 to plus 10.` : '', top: pageTop(title, dek),
     body: `<div class="panels">
       <section class="panel"><h2>Heating up</h2><p class="hint">The highest momentum scores right now.</p><ol class="rows">${scoped.slice(0,6).map(li).join('')}</ol></section>
       <section class="panel"><h2>Cooling off</h2><p class="hint">The lowest momentum scores right now.</p><ol class="rows">${scoped.slice(-6).reverse().map(li).join('')}</ol></section>

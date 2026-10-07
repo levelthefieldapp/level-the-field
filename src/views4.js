@@ -31,8 +31,12 @@ function viewPicks(){
       <td class="wide">${marketTxt(g, true) ?? '<span class="cf">Not posted</span>'}</td><td class="wide">${edgeTxt(x.e, true)}</td></tr>
       <tr class="pkw"><td class="wide"></td><td colspan="6">${whyList(c, 5)}<a class="more inl" href="${gameL(g)}">Full breakdown</a></td></tr>`; }).join('');
   const b = BT, su = suRecord();
+  const sure = [...games].sort((p, q2) => q2.c.score - p.c.score)[0], be = games.filter(x => x.e && !x.e.none).sort((p, q2) => q2.e.pts - p.e.pts)[0];
+  const loser = x => x.c.pick.n === x.g.h ? x.g.a : x.g.h;
+  const lead = `Most confident pick${now ? '' : ` of week ${wk}`}: <a class="tlink" href="${gameL(sure.g)}">${esc(sure.c.pick.n)} over ${esc(loser(sure))}</a>, ${sure.c.score} of 100.`
+    + (be ? ` Biggest LTF Edge: <a class="tlink" href="${gameL(be.g)}">${esc(be.e.t.n)} +${be.e.pts}</a>.` : '') + ` ${games.length} games${groupKey() === 'all' ? '' : ` for the ${esc(groupLabel())}`}.`;
   const so = (key, label) => `<a data-keep href="${Lq({sort:key})}" aria-current="${(R.q.sort || null) === key}">${label}</a>`;
-  return {title, controls:true, top: pageTop(title, `<b>${groupKey()==='all' ? 'Every game' : esc(groupLabel())}.</b> ${now ? 'What LTF expects this week' : `What LTF expects in week ${wk}, from where every team stands today`}. Each pick has a confidence score and the reasons behind it.${now ? '' : ` ${lined ? `Early market lines are posted for ${lined} of these ${games.length} games` : 'Market lines post closer to the game'}, so most of these scores rest on LTF alone and will move as results come in.`}`),
+  return {title, controls:true, lead, top: pageTop(title, `<b>${groupKey()==='all' ? 'Every game' : esc(groupLabel())}.</b> ${now ? 'What LTF expects this week' : `What LTF expects in week ${wk}, from where every team stands today`}. Each pick has a confidence score and the reasons behind it.${now ? '' : ` ${lined ? `Early market lines are posted for ${lined} of these ${games.length} games` : 'Market lines post closer to the game'}, so most of these scores rest on LTF alone and will move as results come in.`}`),
     body: tabs + `<div class="facts">${fact('Winners picked, five past seasons', b.su + '%', `${b.games ? b.games.toLocaleString() : ''} games. The market picked ${b.mktSu}%`)}
       ${fact('Winners picked, this season', (su.n ? Math.round(100*su.w/su.n) : 0) + '%', `${su.w} of ${su.n} games since week ${HW[0]+1}`)}
       ${fact('LTF Edge against the spread, five past seasons', b.atsAll + '%', 'A coin flip. Do not treat it as a way to beat the line')}</div>
@@ -73,8 +77,11 @@ function viewRecap(){
       <td>${r.side ? esc(byName[r.side].ab) : '<span class="cf">Same</span>'}</td><td class="res ${r.right===true?'up':r.right===false?'down':''}">${r.right===true?'Right':r.right===false?'Wrong':'Push'}</td>
       <td class="num wide">${r.ei.toFixed(1)}</td><td class="num wide">${r.em.toFixed(1)}</td></tr>`; }).join('');
   const mi = tr.length ? mean(tr.map(r => r.ei)) : 0, mm = tr.length ? mean(tr.map(r => r.em)) : 0;
-  return {title:`Week ${wk} recap`, top: pageTop(`Week ${wk} recap`, `How LTF did on week ${wk}. Every line here was set before kickoff, from earlier games only.`),
-    body: seg + `<div class="facts">${fact('Winners picked', `${suW} of ${dec.length}`, `${dec.length ? Math.round(100*suW/dec.length) : 0}%. Market favorites won ${mkW} of ${mk.length}`)}
+  const wt = scoreTally(scoreRows().filter(r => r.g.w === wk)), wl2 = wt.ltf, wm = wt.mkt;
+  return {title:`Week ${wk} recap`, card:'receipts:' + wk,
+    lead: wl2.w + wl2.l ? `LTF picked ${wl2.w} of ${wl2.w + wl2.l} winners in week ${wk}. The betting line had ${wm.w} of ${wm.w + wm.l}.${aw + al ? ` Against the spread, the LTF side went ${aw}-${al}${ap ? '-' + ap : ''}.` : ''}` : '',
+    top: pageTop(`Week ${wk} recap`, `How LTF did on week ${wk}, in games with a betting line. Every line here was set before kickoff, from earlier games only.`),
+    body: seg + `<div class="facts">${fact('Winners picked', `${wl2.w} of ${wl2.w + wl2.l}`, `${wl2.w + wl2.l ? Math.round(100*wl2.w/(wl2.w + wl2.l)) : 0}%. Market favorites won ${wm.w} of ${wm.w + wm.l}`)}
       ${fact('LTF side against the spread', `${aw}-${al}${ap?'-'+ap:''}`, `${aw+al ? Math.round(100*aw/(aw+al)) : 0}% of decided games`)}
       ${fact('Average miss', mi.toFixed(1) + ' points', `The market missed by ${mm.toFixed(1)}`)}
       ${fact('Upsets', gs.filter(q => (q.g.hp > q.g.ap ? q.x.pHome : 1-q.x.pHome) < .3).length, 'winners LTF gave under 30%')}</div>
@@ -114,7 +121,9 @@ function viewOdds(){
     table = colKey([['Projected finish', 'The most likely final record.'], ['Bowl eligible', 'The chance of reaching six wins, the mark for bowl eligibility.', true], ['Win conference', 'The chance of winning the conference title game.'], ['Make the playoff', 'The chance of landing in the 12-team field.'], ['Since last week', 'How much the playoff chance moved, in percentage points.', true]])
       + `<div class="scroll"><table class="grid"><thead><tr>${sortTh('team','Team','','po')}${sortTh('idx','LTF rank','num wide','po','ltfrank')}${th('Record','num','rec')}${sortTh('xw','Projected finish','num','po','xw')}${sortTh('bowl','Bowl eligible','num wide','po','bowl')}${sortTh('cf','Win conference','num','po','ct')}${sortTh('po','Make the playoff','','po','po')}${sortTh('chg','Since last week','num wide','po')}</tr></thead><tbody>${body || emptyRow(8,'team')}</tbody></table></div>`;
   }
-  return {title:'Season odds', controls:true, top: pageTop('Season odds', `<b>${groupLabel()}.</b> The rest of the season played out ${SIMS.toLocaleString()} times from the current LTF Index. Each run gives every team a slightly different true strength, plays every remaining game, holds conference title games, and picks a 12-team playoff field.`),
+  const likely = T.filter(inGroup).sort((x, y) => now[y.n].po - now[x.n].po || y.cz - x.cz).slice(0, 3);
+  const lead = likely.length ? `Most likely to make the playoff${groupKey() === 'all' ? '' : ` from the ${esc(groupLabel())}`}: ${list(likely.map(t => `${tl(t)} ${pct(now[t.n].po)}`))}.` : '';
+  return {title:'Season odds', controls:true, lead, top: pageTop('Season odds', `<b>${groupLabel()}.</b> The rest of the season played out ${SIMS.toLocaleString()} times from the current LTF Index. Each run gives every team a slightly different true strength, plays every remaining game, holds conference title games, and picks a 12-team playoff field.`),
     body: seg + table + `<div class="note"><p>These are estimates from LTF, not forecasts from the selection committee. Conference title games are assumed to match the top two teams by conference record, and the playoff field is picked by LTF Index after each simulated season. LTF forgives a loss more easily than the committee does, so the top teams' playoff chances here run high. Win totals count regular-season games only.</p></div>
     <p class="next"><a class="txt" href="${L('playoff')}">The playoff bracket if the season ended today</a></p>`};
 }

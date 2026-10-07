@@ -30,7 +30,13 @@ function viewGames(){
   if (q) games = games.filter(g => g.h.toLowerCase().includes(q) || g.a.toLowerCase().includes(q));
   const done = weekDone(wk);
   const dek = `<b>Week ${wk}, ${groupKey()==='all' ? 'every game' : esc(groupLabel())}.</b> ${done ? 'Final scores, with the LTF line as it stood before kickoff and how each game went against the market.' : `The LTF line and a confidence score for every game, next to the market line${wk === M.next ? '' : ' where an early one is posted'}. Select a game for the reasons behind the pick.`}`;
-  return {title:`Week ${wk} games`, controls:true, top: pageTop('Games', dek),
+  const all = G.filter(g => g.w === wk), left = all.filter(g => !g.done), fin = all.length - left.length;
+  const big = left.filter(g => byName[g.h] && byName[g.a]).sort((a,b) => (byName[a.h].rank + byName[a.a].rank) - (byName[b.h].rank + byName[b.a].rank))[0];
+  const tally = fin ? scoreTally(scoreRows().filter(r => r.g.w === wk)).ltf : null;
+  const lead = `${all.length} games in week ${wk}${fin && left.length ? `, ${fin} of them final` : ''}.`
+    + (big ? ` The biggest ${fin ? 'left ' : ''}by rank: <a class="tlink" href="${gameL(big)}">No. ${byName[big.a].rank} ${esc(big.a)} ${big.n ? 'vs' : 'at'} No. ${byName[big.h].rank} ${esc(big.h)}</a>, ${fmtDay(big.d)}.` : '')
+    + (tally && tally.w + tally.l ? ` LTF has had the winner in ${tally.w} of ${tally.w + tally.l} with a betting line.` : '');
+  return {title:`Week ${wk} games`, controls:true, lead, top: pageTop('Games', dek),
     body: weeks + (games.length ? gameList(games) : `<p class="empty">No games match. Clear the search box or pick a different week or group.</p>`) +
       (done ? `<p class="hint after">Weeks 1 and 2 have no LTF line, since there were no results yet to build one from. <a class="txt" href="${L('track')}">See the full track record</a></p>`
             : `<p class="hint after"><a class="txt" href="${L('picks', null, {week: wk === M.next ? null : wk})}">Week ${wk} picks, with the reasons for each</a></p>`)};
@@ -105,7 +111,7 @@ function viewGame(){
   const tp = A && B ? `<section class="sec"><h2>${g.done ? 'How they compare now' : 'The matchup, stat by stat'}</h2>${tape(A, B)}
       <p class="next"><a class="txt" href="${L('compare', null, {a:A.slug, b:B.slug, site:g.n?'n':'b'})}">Open this matchup in the compare tool</a></p></section>` : '';
   return {title:`${g.a} ${g.n?'vs':'at'} ${g.h}`, top: crumbs([['Games', L('games')], [`Week ${g.w}`, L('games', null, {week:g.w})], [`${esc(g.a)} ${g.n?'vs':'at'} ${esc(g.h)}`]]),
-    body: `${head}<p class="pdek gstory">${story} <button class="more inl" type="button" data-share="${esc(g.a)} ${g.n?'vs':'at'} ${esc(g.h)}">Share this page</button></p><div class="facts">${facts}</div>${sections}${tp}
+    body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${sections}${tp}
       ${x || g.hs != null ? fine : ''}`};
 }
 

@@ -6,10 +6,11 @@
 <meta name="robots" content="noindex">
 <title>Page not found | Level the Field</title>
 <script>
-  // Any address that does not exist lands here. Send it to the site's own not-found page.
+  // Any address with no page of its own lands here. Hand it to the front page, which shows the right page or says it is missing.
   var base = null;
   if (!base){ var parts = location.pathname.split('/'); base = /\.github\.io$/.test(location.hostname) && parts.length > 2 ? '/' + parts[1] + '/' : '/'; }
-  if (location.pathname !== base) location.replace(base + '#/not-found');
+  var rest = location.pathname.indexOf(base) === 0 ? location.pathname.slice(base.length).replace(/\/+$/, '') : 'not-found';
+  if (location.pathname !== base) location.replace(base + '#/' + rest + location.search);
 </script>
 </head>
 <body style="font-family:system-ui,sans-serif;padding:40px;background:#fff;color:#15171A">

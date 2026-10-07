@@ -6,6 +6,19 @@ const PREV = HW.length > 1 ? HW[HW.length-2] : null;
 /* plain words for a rank */
 const lc = s => s.replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());     // lower-case a stat name without breaking "EPA"
 const tier = rank => { const p = rank / T.length; return p <= .07 ? 'Elite' : p <= .18 ? 'Excellent' : p <= .36 ? 'Good' : p <= .64 ? 'Average' : p <= .84 ? 'Below average' : 'Poor'; };
+/* Tiers put the 0 to 100 score into seven bands, eight points wide, and name each for the level of play. An average
+   team is 50 and the spread between teams is about 14 points, so 78 is two of those spreads above average. The names
+   describe how a team has played so far. They are not a forecast. */
+const TIERS = [
+  {k:'title',   min:78,  name:'Title contenders',   what:'78 and up'},
+  {k:'playoff', min:70,  name:'Playoff caliber',    what:'70 to 78'},
+  {k:'top25',   min:62,  name:'Top 25 caliber',     what:'62 to 70'},
+  {k:'bowl',    min:54,  name:'Solid bowl teams',   what:'54 to 62'},
+  {k:'mid',     min:46,  name:'Middle of the pack', what:'46 to 54'},
+  {k:'below',   min:38,  name:'Below average',      what:'38 to 46'},
+  {k:'low',     min:-1,  name:'Struggling',         what:'under 38'},
+];
+const tierOf = t => TIERS.find(x => t.idx >= x.min) || TIERS[TIERS.length - 1];
 const tierTag = rank => `<span class="tier t${Math.min(5, ['Elite','Excellent','Good','Average','Below average','Poor'].indexOf(tier(rank)))}">${tier(rank)}</span>`;
 
 /* last week's stat ranks, for trend arrows */

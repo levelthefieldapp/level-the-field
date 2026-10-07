@@ -27,33 +27,46 @@ def arg(flag, default=None):
     return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else default
 
 
-def one_line(text, starts):
+def one_line(text, starts, where):
     hits = [ln for ln in text.split("\n") if ln.startswith(starts)]
     if len(hits) != 1:
-        bad(f"expected one line starting with {starts!r} in the page, found {len(hits)}")
+        bad(f"expected one line starting with {starts!r} in {where}, found {len(hits)}")
         return None
     try:
         return json.loads(hits[0][len(starts):].rstrip().rstrip(";").replace("<\\/", "</"))
     except Exception as e:
-        bad(f"the line starting with {starts!r} does not read as data: {repr(e)[:100]}")
+        bad(f"the line starting with {starts!r} in {where} does not read as data: {repr(e)[:100]}")
         return None
 
 
 def check_page(site):
-    path = os.path.join(site, "index.html")
-    if not os.path.exists(path):
-        bad("there is no index.html to publish")
-        return None, None
-    text = open(path, encoding="utf-8").read()
-    if len(text) < 400_000:
-        bad(f"index.html is only {len(text):,} characters, far smaller than a full site")
-    for must in ("<title>Level the Field</title>", 'id="view"', "</html>"):
-        if must not in text:
-            bad(f"index.html is missing {must!r}")
-    for name in ("404.html", "og.png", "favicon.png", "apple-touch-icon.png"):
+    """The site's files are all there and whole. Returns the numbers and the settings built into them."""
+    read = lambda name: open(os.path.join(site, name), encoding="utf-8").read() if os.path.exists(os.path.join(site, name)) else None
+    index, app, data, css = read("index.html"), read("app.js"), read("data.js"), read("app.css")
+    for name, text, least in (("index.html", index, 2_000), ("app.js", app, 150_000), ("data.js", data, 200_000), ("app.css", css, 20_000)):
+        if text is None:
+            bad(f"{name} is missing from the site folder")
+        elif len(text) < least:
+            bad(f"{name} is only {len(text):,} characters, far smaller than it should be")
+    if index is not None:
+        for must in ("<title>Level the Field</title>", 'id="view"', "app.js?v=", "data.js?v=", "</html>"):
+            if must not in index:
+                bad(f"index.html is missing {must!r}")
+    if app is not None and "function render()" not in app:
+        bad("app.js is cut off or is not the site's code")
+    for name in ("404.html", "og.png", "favicon.png", "apple-touch-icon.png", "fonts/archivo-latin-wdth-normal.woff2", "fonts/archivo-latin-wdth-italic.woff2",
+                 "rankings/index.html", "picks/index.html", "scorecard/index.html"):
         if not os.path.exists(os.path.join(site, name)):
             bad(f"{name} is missing from the site folder")
-    return one_line(text, "const D = "), one_line(text, "const SITE = ")
+    d = one_line(data, "const D = ", "data.js") if data else None
+    cfg = one_line(app, "const SITE = ", "app.js") if app else None
+    if d:
+        for kind, want in (("team", len(d.get("teams", []))), ("game", len(d.get("games", [])))):
+            folder = os.path.join(site, kind)
+            have = len(os.listdir(folder)) if os.path.isdir(folder) else 0
+            if have != want:
+                bad(f"{have} {kind} pages were written, expected {want}")
+    return d, cfg
 
 
 def check_data(d):
@@ -184,16 +197,20 @@ def check_render(site, d):
     done = [g for g in games if g.get("hp") is not None]
     todo = [g for g in games if g.get("hp") is None and g["w"] == m.get("next")]
     routes += [f"game/{g['id']}" for g in (done[-1:] + todo[:1])]
-    base = "file://" + os.path.abspath(os.path.join(site, "index.html"))
+    root = "file://" + os.path.abspath(site)
+    urls = [(("/" + r if r else "the front page"), f"{root}/index.html#/{r}") for r in routes]
+    # a few pages opened at their own address, the way a shared link arrives
+    own = ["rankings", "team/" + slug(plain[0])] + [f"game/{g['id']}" for g in todo[:1]]
+    urls += [(f"/{r}/ at its own address", f"{root}/{r}/index.html") for r in own]
     with ThreadPoolExecutor(4) as pool:
-        doms = list(pool.map(lambda r: dump(browser, f"{base}#/{r}"), routes))
-    for r, dom in zip(routes, doms):
-        name = "/" + r if r else "the front page"
+        doms = list(pool.map(lambda u: dump(browser, u[1]), urls))
+    for (name, _), dom in zip(urls, doms):
         err = re.search(r'<html[^>]*\sdata-err="([^"]*)"', dom)
+        drawn = re.search(r'<html[^>]*\sdata-drawn="([^"]*)"', dom)
         view = re.search(r'<section id="view">(.*?)</section>\s*</main>', dom, re.S)
         if err:
             bad(f"{name} hit an error in the browser: {err.group(1)}")
-        elif not view or len(view.group(1)) < 400:
+        elif not drawn or not view or len(view.group(1)) < 400 or 'class="pre"' in view.group(1):
             bad(f"{name} came up empty in the browser")
         else:
             text = re.sub(r"<[^>]+>", " ", view.group(1))
@@ -202,7 +219,7 @@ def check_render(site, d):
             hit = re.search(r"\b(undefined|NaN|Infinity)\b|\[object", text)
             if hit:
                 bad(f"{name} shows a broken value ({text[max(0, hit.start() - 40):hit.end() + 20].strip()!r})")
-    notes.append(f"a browser opened {len(routes)} pages")
+    notes.append(f"a browser opened {len(urls)} pages")
 
 
 if __name__ == "__main__":

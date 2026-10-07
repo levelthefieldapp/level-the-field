@@ -33,7 +33,7 @@ function shell(){
   if (sub){ const on = $('subnav').querySelector('[aria-current]'); if (on && on.scrollIntoView) try { on.scrollIntoView({block:'nearest', inline:'center'}); } catch(e){} }
   $('menunav').innerHTML = SECTIONS.map(s => s.pages.length ? `<h3>${s.label}</h3>${links(s.pages)}` : `<a class="top" href="${L(s.k)}"${cur(s.k)}>${s.label}</a>`).join('') + `<h3>The site</h3>${links([['contact','Contact']])}`;
   document.querySelectorAll('a.brand').forEach(a => { a.setAttribute('href', L('home')); });
-  $('ribbon').innerHTML = ribbon();
+  $('ribbon').innerHTML = ribbon(); document.body.classList.toggle('at-home', R.page === 'home');
   const col = (h, arr) => `<div><h3>${h}</h3>${arr.map(([k,l]) => `<a href="${L(k)}">${l}</a>`).join('')}</div>`;
   const off = store.get('ltf.logos') === false;
   $('foot').innerHTML = `<nav class="fnav" aria-label="Footer">${SECTIONS.filter(s => s.pages.length).map(s => col(s.label, s.k === 'scorecard' ? [...s.pages, ['contact','Contact']] : s.pages)).join('')}</nav>
@@ -59,31 +59,33 @@ function render(){
   hidePop();
   const v = (VIEWS[R.page] || viewNotFound)();
   document.title = v.title ? `${v.title} | ${BRAND}` : BRAND;
-  $('top').innerHTML = chrome() + (v.top || '');
+  $('top').innerHTML = chrome() + fillTop(v.top, v);
   controls(!!v.controls);
   view.innerHTML = v.body;
   if (v.after) v.after();
+  document.documentElement.setAttribute('data-drawn', R.page);      // the publish check looks for this to know the page drew itself
 }
 
 /* ================= getting around ================= */
-let cur = '#/';
+let cur = addr('home');
 const scrolls = {};
 const toTop = y => { try { window.scrollTo(0, y || 0); } catch(e){} };
 function setUrl(url, replace){
   let ok = false;
   try { history[replace ? 'replaceState' : 'pushState'](null, '', url); ok = true; } catch(e){}
-  if (!ok){ try { if (replace) location.replace(url); else location.hash = url.slice(1); } catch(e){} }
+  if (!ok){ try { if (PATHS) location.assign(url); else if (replace) location.replace(url); else location.hash = url.slice(1); } catch(e){} }
   cur = url;
 }
 function go(url, opt = {}){
+  if (PATHS === url.startsWith('#')) url = canon(url);      // accept either form of an address, keep the bar in this site's form
   if (!opt.replace) scrolls[cur] = window.scrollY || 0;
-  setUrl(url, opt.replace); R = parse(url); closeMenus(); render();
-  if (!opt.keep) toTop(0);
+  closeSheet(); setUrl(url, opt.replace); R = parse(url); closeMenus(); render();
+  if (!opt.keep){ toTop(0); countView(); }
 }
 function onUrlChange(){   // back and forward buttons, or a typed address
-  const url = location.hash || '#/';
+  const url = here();
   if (url === cur) return;
-  scrolls[cur] = window.scrollY || 0; cur = url; R = parse(url); closeMenus(); render(); toTop(scrolls[url] || 0);
+  closeSheet(); scrolls[cur] = window.scrollY || 0; cur = url; R = parse(url); closeMenus(); render(); toTop(scrolls[url] || 0); countView();
 }
 window.addEventListener('popstate', onUrlChange);
 window.addEventListener('hashchange', onUrlChange);
@@ -144,7 +146,7 @@ document.addEventListener('error', e => {
   const el = e.target; if (!el || !el.dataset || !el.dataset.t) return;
   const t = bySlug[el.dataset.t]; if (!t) return;
   const isImg = el.tagName === 'IMG', src = isImg ? el.getAttribute('src') : (el.getAttribute('href') || '');
-  if (/^logos\//.test(src) && !t.noLocal){ t.noLocal = true; const u = logoSrc(t, /^logos\/dark\//.test(src)); if (isImg) el.setAttribute('src', u); else el.setAttribute('href', u); return; }   // the local copy is missing, so try the public one
+  if (src.startsWith(ROOT + 'logos/') && !t.noLocal){ t.noLocal = true; const u = logoSrc(t, src.startsWith(ROOT + 'logos/dark/')); if (isImg) el.setAttribute('src', u); else el.setAttribute('href', u); return; }   // the local copy is missing, so try the public one
   if (/500-dark/.test(src) && !t.noDark){ t.noDark = true; const u = logoSrc(t, false); if (isImg) el.setAttribute('src', u); else el.setAttribute('href', u); return; }
   t.lgBad = true;
   if (isImg) el.outerHTML = chip(t, el.dataset.s || ''); else if (R.page === 'stats') plotDraw();
@@ -160,29 +162,27 @@ document.addEventListener('click', e => {
   if (!t.closest('.nav details')) document.querySelectorAll('.nav details[open]').forEach(d => { d.open = false; });
   const a = t.closest('a');
   if (a){
+    if (a.dataset.alt){ e.preventDefault(); openSheet(a.dataset.alt); return; }
     const href = a.getAttribute('href') || '';
-    if (href.startsWith('#/') && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey){
+    if (isPage(href) && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey){
       e.preventDefault(); const keep = a.hasAttribute('data-keep'); go(href, {replace: keep, keep});
     }
     return;
   }
-  const b = t.closest('button'); if (!b) return;
+  const b = t.closest('button'); if (!b){ if (t.id === 'sheet') closeSheet(); return; }
+  if (b.dataset.card){ openSheet(b.dataset.card, b, b.dataset.alts ? b.dataset.alts.split('|').map(x => x.split('=')) : null); return; }
+  if (b.id === 'sheetClose'){ closeSheet(); return; }
+  if (b.dataset.sheet){ sheetClick(b); return; }
+  if (b.dataset.about != null){ const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); return; }
   if (b.id === 'menuBtn'){ document.body.classList.add('menu-open'); b.setAttribute('aria-expanded', 'true'); const i = document.querySelector('#menu .gs'); if (i) i.focus({preventScroll:true}); }
   else if (b.id === 'menuClose'){ closeMenus(); $('menuBtn').focus(); }
   else if (b.dataset.zoom){ if (b.dataset.zoom === 'reset') plotReset(); else plotZoom(b.dataset.zoom === 'in' ? 1.6 : 1/1.6); }
   else if (b.dataset.logos){ store.set('ltf.logos', b.dataset.logos === 'on'); render(); }
   else if (b.dataset.follow){ const cur = favs().map(x => x.slug), sl = b.dataset.follow; store.set('ltf.favs', cur.includes(sl) ? cur.filter(x => x !== sl) : [...cur, sl]); store.set('ltf.fav', null); render(); }
   else if (b.dataset.dismiss){ store.set('ltf.started', true); render(); }
-  else if (b.dataset.share){
-    let url = ''; try { url = location.href; } catch(e){}
-    const said = msg => { const old = b.textContent; b.textContent = msg; setTimeout(() => { b.textContent = old; }, 1600); };
-    if (navigator.share) navigator.share({title: `${b.dataset.share} | ${BRAND}`, url}).catch(() => {});
-    else if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => said('Link copied'), () => said('Copy the address bar'));
-    else said('Copy the address bar');
-  }
   else if (b.id === 'reset' || b.dataset.resetw){ W = {...DEFAULTS}; store.set('ltf.weights', W); recompute(); const q = {...R.q}; delete q.w; go(L(R.page, R.id, q), {replace:true, keep:true}); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape'){ hidePop(); if (document.body.classList.contains('menu-open')){ closeMenus(); $('menuBtn').focus(); } } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape'){ hidePop(); closeSheet(); if (document.body.classList.contains('menu-open')){ closeMenus(); $('menuBtn').focus(); } } });
 $('conf').addEventListener('change', e => go(Lq({group: e.target.value || null}), {replace:true, keep:true}));
 $('find').addEventListener('input', e => go(Lq({find: e.target.value.trim() ? e.target.value : null}), {replace:true, keep:true}));
 view.addEventListener('change', e => { const k = e.target.dataset && e.target.dataset.pick; if (k) go(Lq({[k]: e.target.value}), {replace:true, keep:true}); });
@@ -205,8 +205,11 @@ let resizeTimer, lastW = window.innerWidth; window.addEventListener('resize', ()
   const sel = $('conf');
   CONFS.forEach(c => { const o = document.createElement('option'); o.value = c.slug; o.textContent = c.label; sel.appendChild(o); });
   document.querySelectorAll('.brandname').forEach(el => { el.innerHTML = BRAND.split(' ').map(w => /^the$/i.test(w) ? `<span class="thin">${esc(w)}</span>` : esc(w)).join(' '); });
-  let start = '#/'; try { start = location.hash || '#/'; } catch(e){}
+  let ask = ''; try { ask = location.hash; } catch(e){}
+  const wantCards = ask.startsWith('#!cards=') ? ask.slice(8).split(',').filter(Boolean) : null;
+  const start = wantCards ? addr('home') : here();
   cur = start; R = parse(start);
+  if (PATHS && !wantCards){ let at = ''; try { at = location.pathname + location.search + location.hash; } catch(e){} if (at !== start) setUrl(start, true); }      // an old #/ link lands here, then shows its real address
   const saved = store.get('ltf.weights');
   W = parseWeights(R.q.w) || (saved && parseWeights(COMP.map(c => saved[c.k]).join('-'))) || {...DEFAULTS};
   recompute();
@@ -217,7 +220,7 @@ let resizeTimer, lastW = window.innerWidth; window.addEventListener('resize', ()
   }
   if (customWeights() && !R.q.w) setUrl(L(R.page, R.id, R.q), true);
   LOGO_OK = LOCAL.size > 0 || store.get('ltf.logoOk') === true;          // logos published with the site always load; otherwise go by last time
-  render();
+  if (wantCards) exportCards(wantCards); else { render(); countView(); }
   if (!LOCAL.size && !LOGOS_OFF){   // find out whether this browser can load team logos at all. Some viewers block outside images.
     const tries = byRank().slice(0, 3).map(t => logoSrc(t, false)).filter(Boolean), im = new Image();
     im.onload = () => { store.set('ltf.logoOk', true); if (!LOGO_OK){ LOGO_OK = true; render(); } };

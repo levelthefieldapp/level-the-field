@@ -5,6 +5,10 @@ const BRAND = 'Level the Field';     // the site's name
 const SITE = null;
 // make_site.py fills in the line above when the site is published at its own address: where it lives and which
 // team logos sit in the logos folder next to the page. In a plain preview it stays null.
+// ROOT is the folder the site sits in, read from where this script was loaded. On the published site every page
+// has a real address under it (/team/alabama/). In a preview, or opened as a file, addresses ride after a # instead.
+const ROOT = (() => { try { const s = document.currentScript && document.currentScript.src; return s ? new URL('.', s).pathname : ''; } catch(e){ return ''; } })();
+const PATHS = !!SITE && !!SITE.paths && !!ROOT && location.protocol !== 'file:';
 const CONTACT_EMAIL = '';            // put a public contact address here to switch on the Contact page's email link
 const COMP = [
   {k:'res', name:'Résumé',           col:'Résumé',  w:20, what:'Who a team has beaten and lost to: strength of record, quality wins and scoring margin.'},
@@ -52,12 +56,19 @@ function ranks(vals){ // 1 = highest
 const AVG = {}, SD = {};                               // the average team's number for each stat and how spread out the country is on it
 const LOCAL = new Set(SITE && Array.isArray(SITE.logos) ? SITE.logos : []);      // teams with a logo file published next to the page
 const LOGOS_OFF = !!SITE && SITE.logos === false;                                  // the site owner has switched logos off for everyone
-const logoSrc = (t, dark) => !t.lg ? null : LOCAL.has(t.lg) && !t.noLocal ? `logos/${dark ? 'dark/' : ''}${t.lg}.webp`
+const logoSrc = (t, dark) => !t.lg ? null : LOCAL.has(t.lg) && !t.noLocal ? `${ROOT}logos/${dark ? 'dark/' : ''}${t.lg}.webp`
   : `https://a.espncdn.com/i/teamlogos/ncaa/${dark ? '500-dark' : '500'}/${t.lg}.png`;
 const store = {
   get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
   set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
 };
+/* The visitor counter, when the site owner has switched it on. It uses no cookies and keeps nothing that identifies a person.
+   One count per page opened, by its plain address, and one for each time the share panel is opened. */
+function countHit(o){ if (!SITE || !SITE.counter) return;
+  const send = n => { const gc = window.goatcounter; if (gc && gc.count){ try { gc.count(o()); } catch(e){} } else if (n < 24) setTimeout(() => send(n + 1), 400); };
+  send(0); }
+const countView = () => countHit(() => { let p = '/'; try { p = location.pathname; } catch(e){} return {path: p, title: document.title}; });
+const countEvent = name => countHit(() => ({path: name, title: name, event: true}));
 const BUILT = new Date(M.builtAt || M.built + 'T12:00:00');                         // when the numbers were last rebuilt
 const builtTxt = year => BUILT.toLocaleDateString(undefined, {month:'long', day:'numeric', ...(year ? {year:'numeric'} : {})}) + (M.builtAt ? ', ' + BUILT.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'}) : '');
 const STALE = !!SITE && M.next != null && Date.now() - BUILT > 40*3600e3;         // in season, a published site updates at least daily
@@ -228,8 +239,17 @@ function trackRecord(){   // every finished game where the index had a line befo
 }
 
 /* ================= routing ================= */
-function parse(hash){
-  const h = String(hash || '').replace(/^#\/?/, ''), cut = h.indexOf('?');
+function toHash(url){   // a real address, turned into the short form the rest of the code reads
+  try {
+    const u = new URL(url, location.href);
+    if (u.hash.startsWith('#/')) return u.hash;
+    if (ROOT && u.pathname.startsWith(ROOT)) return '#/' + u.pathname.slice(ROOT.length).replace(/index\.html$/, '').replace(/\/+$/, '') + u.search;
+  } catch(e){}
+  return '#/';
+}
+function parse(url){
+  let s = String(url || ''); if (s && !s.startsWith('#')) s = toHash(s);
+  const h = s.replace(/^#\/?/, ''), cut = h.indexOf('?');
   const path = cut < 0 ? h : h.slice(0, cut), qs = cut < 0 ? '' : h.slice(cut+1);
   let seg = []; try { seg = path.split('/').filter(Boolean).map(decodeURIComponent); } catch(e){ seg = ['?']; }
   const q = {}; try { new URLSearchParams(qs).forEach((v,k) => { q[k] = v; }); } catch(e){}
@@ -238,8 +258,20 @@ function parse(hash){
 function L(page, id, q){   // the address of any page. Custom weights ride along so shared links show the same rankings.
   const p = {...(q || {})}; if (customWeights()) p.w = weightStr(W); else delete p.w;
   const qs = Object.entries(p).filter(([k,v]) => v != null && v !== '').map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&');
-  return '#/' + (page === 'home' ? '' : page) + (id ? '/' + encodeURIComponent(id) : '') + (qs ? '?' + qs : '');
+  return addr(page, id, qs);
 }
+function addr(page, id, qs){   // one page's address, in whichever form this copy of the site uses
+  return PATHS ? ROOT + (page === 'home' ? '' : page + '/') + (id ? encodeURIComponent(id) + '/' : '') + (qs ? '?' + qs : '')
+               : '#/' + (page === 'home' ? '' : page) + (id ? '/' + encodeURIComponent(id) : '') + (qs ? '?' + qs : '');
+}
+const canon = url => { const r = parse(url); return addr(r.page, r.id, Object.entries(r.q).map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&')); };
+const here = () => {   // the address this browser is on, in the same form L() writes
+  let h = ''; try { h = location.hash; } catch(e){}
+  if (h.startsWith('#/')) return PATHS ? canon(h) : h;
+  if (!ROOT) return '#/';
+  try { return PATHS ? canon(location.pathname + location.search) : toHash(location.pathname + location.search); } catch(e){ return addr('home'); }
+};
+const isPage = href => href.startsWith('#/') || (PATHS && href.startsWith(ROOT) && !/\.[a-z0-9]+$/i.test(href.split('?')[0]));      // a link to a page of this site, not to a file or another site
 let R = parse('');
 const Lq = changes => L(R.page, R.id, {...R.q, ...changes});     // same page, different settings
 const teamL = t => L('team', t.slug), gameL = g => L('game', String(g.id)), confL = c => L('conference', c.slug);

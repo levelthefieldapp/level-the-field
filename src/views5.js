@@ -95,7 +95,9 @@ function viewReputation(){
       <td class="num wide">${x.spots === 0 ? '<span class="mv same">same</span>' : `<span class="mv ${x.spots>0?'down':'up'}">${Math.abs(x.spots)} ${x.spots>0?'higher in the market':'higher in LTF'}</span>`}</td>
       <td class="num c ${x.pts>=0?'neg':'pos'}" style="--t:${Math.min(1, Math.abs(x.pts)/12).toFixed(2)}">${Math.abs(x.pts) < 0.05 ? 'Even' : `${x.pts>0?'Market':'LTF'} +${Math.abs(x.pts).toFixed(1)}`}</td>
       <td class="num wide">${M.apWeek == null ? '' : x.t.d.apr ? x.t.d.apr : '<span class="cf">NR</span>'}</td></tr>`).join('');
-  return {title:'Reputation gap', controls:true, top: pageTop('Reputation gap', `<b>${groupLabel()}.</b> The betting market has its own opinion of every team, and it can be read back out of the point spreads. This page puts that opinion next to LTF, which ignores names, polls and preseason hype.`),
+  const mHi = [...scoped].sort((p, q2) => q2.pts - p.pts)[0], mLo = [...scoped].sort((p, q2) => p.pts - q2.pts)[0];
+  const lead = mHi && mLo && mHi !== mLo ? `The market rates ${tl(mHi.t)} ${mHi.pts.toFixed(1)} points better than LTF does, the widest gap. Going the other way, LTF rates ${tl(mLo.t)} ${Math.abs(mLo.pts).toFixed(1)} points better than the market does.` : '';
+  return {title:'Reputation gap', controls:true, lead, top: pageTop('Reputation gap', `<b>${groupLabel()}.</b> The betting market has its own opinion of every team, and it can be read back out of the point spreads. This page puts that opinion next to LTF, which ignores names, polls and preseason hype.`),
     body: `<div class="panels">
       <section class="panel"><h2>The market rates them higher</h2><p class="hint">Bigger name than their numbers, or the market knows something LTF cannot see.</p><ol class="rows">${hi}</ol></section>
       <section class="panel"><h2>LTF rates them higher</h2><p class="hint">Better numbers than their name, or LTF is being fooled by a small sample.</p><ol class="rows">${lo}</ol></section></div>
@@ -166,7 +168,8 @@ function viewLuck(){
     return `<tr>${teamCell(t)}<td class="num wide">${t.rank}</td><td class="num">${t.w}-${t.l}</td><td class="num c ${t.luck>=0?'pos':'neg'}" style="--t:${Math.min(1, Math.abs(t.luck)/7).toFixed(2)}"><b>${signed(t.luck)}</b></td>
       <td class="num wide">${k.fg_[0]} of ${k.fg_[1]}</td>${cell(k.int)}<td class="num wide">${k.ofg[0]} of ${k.ofg[1]}</td><td class="num">${k.cl[1] ? `${k.cl[0]}-${k.cl[1]-k.cl[0]}` : '\u2013'}</td>
       <td class="num">${t.swing == null ? '\u2013' : `${steadyWord(t)} <span class="cf">\u00B1${t.swing.toFixed(0)}</span>`}</td></tr>`; }).join('');
-  return {title:'Luck and steadiness', controls:true, top: pageTop('Luck and steadiness', `<b>${groupLabel()}.</b> Some things swing games but mostly do not repeat: which way a fumble bounces, whether a tipped pass gets picked off, whether the other kicker has a bad day. This page adds those up, and shows which teams play to the same level every week.`),
+  const lead = top.length > 1 ? `Luckiest so far: ${tl(top[0])}, ${signed(top[0].luck)} points a game. Unluckiest: ${tl(top[top.length - 1])}, ${signed(top[top.length - 1].luck)}.` : '';
+  return {title:'Luck and steadiness', controls:true, lead, top: pageTop('Luck and steadiness', `<b>${groupLabel()}.</b> Some things swing games but mostly do not repeat: which way a fumble bounces, whether a tipped pass gets picked off, whether the other kicker has a bad day. This page adds those up, and shows which teams play to the same level every week.`),
     body: `<div class="panels">
       <section class="panel"><h2>Luckiest</h2><p class="hint">Results have flattered them a little.</p><ol class="rows">${top.slice(0,5).map(li).join('')}</ol></section>
       <section class="panel"><h2>Unluckiest</h2><p class="hint">Better than their results so far.</p><ol class="rows">${top.slice(-5).reverse().map(li).join('')}</ol></section>
