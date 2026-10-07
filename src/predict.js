@@ -1,5 +1,5 @@
 /* ================= explanations and predictions ================= */
-const BT = M.bt || {conf:[], ats:[], cal:[], gamma:.254};
+const BT = M.bt || {conf:[], cal:[], dog:[], gamma:.25};
 /* how far one result moves a team's score. It is biggest early, when each game is a large share of what is known, so it is looked up by the week of the game. */
 const gammaAt = wk => { const gw = BT.gw; if (!gw) return BT.gamma || .254; const ks = Object.keys(gw).map(Number); return gw[String(clamp(wk, Math.min(...ks), Math.max(...ks)))]; };
 const PREV = HW.length > 1 ? HW[HW.length-2] : null;
@@ -31,17 +31,15 @@ const tierTag = rank => `<span class="tier t${Math.min(5, ['Elite','Excellent','
 }
 const trendArrow = (t, f) => { const p = t.prk && t.prk[f]; if (p == null) return ''; const mv = p - t.rk[f]; return Math.abs(mv) < 3 ? '' : `<span class="mv sm ${mv>0?'up':'down'}" title="Was ${ord(p)} last week">${mv>0?'up':'down'} ${Math.abs(mv)}</span>`; };
 
-/* luck, steadiness and the market's opinion of each team */
+/* luck and steadiness */
 T.forEach(t => { const k = t.d.lk; t.luck = k ? 4.5*(k.fum + k.int) + k.fg : null; const gs = t.g.map(e => gameScore0(t, e)); t.swing = gs.length >= 3 ? sdev(gs) : null; });
 function gameScore0(t, e){ const o = byName[e.opp], opw = o ? o.d.pw : M.fcs, s = e.site==='H' ? 1 : e.site==='A' ? -1 : 0; return 50 + 14*(clamp(e.pf - e.pa, -38, 38) + opw - s*M.hfa)/M.k; }     // not capped at 0 and 100, so swings at the extremes still count
 {
   const rk = (rows, val, key) => [...rows].sort((a,b) => val(b)-val(a)).forEach((t,i) => { t[key] = i+1; });
   rk(T.filter(t => t.luck != null), t => t.luck, 'luckRank');                    // 1 = luckiest
   rk(T.filter(t => t.swing != null), t => -t.swing, 'swingRank');                // 1 = steadiest
-  rk(T.filter(t => t.d.mkt != null), t => t.d.mkt, 'mktRank');
 }
 const steadyWord = t => { if (t.swingRank == null) return null; const n = T.filter(x => x.swing != null).length; return t.swingRank <= n/3 ? 'Steady' : t.swingRank <= 2*n/3 ? 'Typical' : 'Up and down'; };
-const idxPts = t => t.cz * slopeAt(M.through);                                  // LTF on a points scale, for comparing with the market
 
 /* where an LTF line comes from, in points for the home team */
 function lineParts(g){
@@ -61,13 +59,12 @@ function gameScore(t, e){
 }
 const gsCell = v => `<span class="gs g${v>=80?0:v>=62?1:v>=45?2:v>=30?3:4}">${Math.round(v)}</span>`;
 
-/* confidence, from how LTF did in past seasons */
-const confWin = p => { const v = Math.max(p, 1-p)*100; return BT.conf.find(c => v >= c.lo && (v < c.hi || c.hi === 100)) || null; };
-const confAts = gap => { const v = Math.abs(gap); return BT.ats.find(c => v >= c.lo && v < c.hi) || null; };
+/* how favorites at this win chance did in past seasons */
+const confWin = p => { const v = Math.max(p, 1-p)*100; return (BT.conf || []).find(c => v >= c.lo && (v < c.hi || c.hi === 100)) || null; };
 
 /* projected score: the LTF line around a total built from points per drive and pace */
 let _totK = null, _mAct = 52, _mMod = 52;
-const TOT_SLOPE = 0.42;     // how much of the model's swing away from an average total held up when tested on games it had not seen
+const TOT_SLOPE = 0.42;     // how much of the swing away from an average total held up when tested on past games
 function totalFor(A, B){ const Lp = _lppd || (_lppd = mean(T.map(t => t.d.oppd))); return ((A.d.oppd + B.d.dppd - Lp) + (B.d.oppd + A.d.dppd - Lp)) * (A.d.dpg + B.d.dpg)/2; }
 let _lppd = null;
 function projScore(g){
@@ -166,7 +163,6 @@ function strengths(t){
   const f = x => `${x.n} (${ord(x.r)})`;
   return {best: all.slice(0,3).map(f), worst: all.slice(-3).reverse().map(f)};
 }
-const fbsGamesPlayed = t => t.g.filter(e => !e.fcs).length;
 
 /* the matchup in sentences */
 function mismatch(off, def){   // the stat where this offense has its biggest edge over that defense
@@ -178,7 +174,7 @@ function preview(g){
   const h = byName[g.h], a = byName[g.a], x = gameLine(g), lp = lineParts(g); if (!h || !a || !x || !lp) return '';
   const fav = x.fav, dog = fav === h ? a : h, sign = fav === h ? 1 : -1, p = Math.max(x.pHome, 1-x.pHome), cw = confWin(p), out = [];
   if (x.pts === 0) out.push(`LTF has this as a pick 'em, with nothing between the two teams once home field is counted.`);
-  else out.push(`LTF makes ${esc(fav.n)} ${anA(x.pts)} ${x.pts}-point favorite${g.n ? ' at a neutral site' : fav === h ? ' at home' : ' on the road'} and gives them a ${clamp(Math.round(p*100),50,99)}% chance to win.${cw ? ` In past seasons, favorites at this level won ${cw.act}% of the time.` : ''}`);
+  else out.push(`LTF makes ${esc(fav.n)} ${anA(x.pts)} ${x.pts}-point favorite${g.n ? ' at a neutral site' : fav === h ? ' at home' : ' on the road'} and gives them ${aPct(clamp(Math.round(p*100),50,99))} chance to win.${cw ? ` In past seasons, favorites at this level won ${f1(cw.act)}% of the time.` : ''}`);
   const drivers = lp.parts.map(q => ({name:q.name.toLowerCase(), pts:q.pts*sign})).sort((q,r) => r.pts-q.pts);
   const forFav = drivers.filter(q => q.pts >= 0.75).slice(0,2), against = drivers.filter(q => q.pts <= -0.75);
   if (forFav.length) out.push(`Most of that comes from ${list(forFav.map(q => `${q.name} (${q.pts.toFixed(1)} points)`))}${!g.n && fav === h ? `, plus ${M.hfa} for home field` : ''}.${against.length ? ` ${esc(dog.n)} has the better ${list(against.map(q => q.name))}, which pulls the line back by ${Math.abs(against.reduce((s,q) => s+q.pts, 0)).toFixed(1)}.` : ''}`);
@@ -189,63 +185,29 @@ function preview(g){
   else if (m2) out.push(`${esc(dog.n)} has no clear edge when they have the ball. Their best matchup is ${statProse(m2.s)}, where they are ${ord(m2.or)} and ${esc(fav.n)}'s defense is ${ord(m2.dr)}.`);
   return out.map(sn => `<p>${sn}</p>`).join('');
 }
-/* the LTF Edge: the gap between the LTF line and the market line, and which team it points to */
-function edgeOf(g){
-  const x = gameLine(g); if (!x || g.hs == null) return null;
-  const gap = x.m + g.hs, pts = half(gap), t = byName[gap > 0 ? g.h : g.a];
-  return {gap, pts, t, none: pts < 1, band: confAts(gap)};
-}
-const edgeTxt = (e, ab) => !e ? '–' : e.none ? '<span class="cf">None</span>' : `<b class="edge">${esc(ab ? e.t.ab : e.t.n)} +${e.pts}</b>`;
-function edgeReasons(g){   // why LTF and the market might differ, when they do
-  const h = byName[g.h], a = byName[g.a], e = edgeOf(g); if (!h || !a || !e) return [];
-  const side = e.t, other = side === h ? a : h, why = [];
-  const field = t => (W.res*t.z.res + W.off*t.z.off + W.def*t.z.def)/((W.res+W.off+W.def) || 1);
-  const lift = (field(side) - side.z.cmp) - (field(other) - other.z.cmp);
-  if (lift > 0.5) why.push(`LTF is going on this season. ${esc(side.n)} has played better than their long-run ratings, or ${esc(other.n)} worse, and the market tends to trust the longer history.`);
-  for (const t of [side, other]) if (fbsGamesPlayed(t) <= 2) why.push(`${esc(t.n)} has faced only ${fbsGamesPlayed(t)} FBS ${fbsGamesPlayed(t)===1?'opponent':'opponents'}, so their numbers rest on thin evidence.`);
-  const scores = side.g.map(q => gameScore(side, q)).sort((p,q) => q-p);
-  if (scores.length >= 3 && scores[0] - scores[1] >= 22) why.push(`${esc(side.n)}'s rating leans on one big game. Their best game score is ${Math.round(scores[0])} and their next best is ${Math.round(scores[1])}.`);
-  if (side.luck != null && side.luck >= 3) why.push(`${esc(side.n)} has had about ${side.luck.toFixed(1)} points a game of good luck, which flatters their numbers.`);
-  why.push(`LTF cannot see injuries, suspensions or a change at quarterback. The market can.`);
-  return why;
-}
-function disagreement(g){
-  const e = edgeOf(g); if (!e || e.pts < 3) return '';
-  return `<section class="sec"><h2>The LTF Edge</h2><p class="pdek"><b>${esc(e.t.n)} +${e.pts}.</b> LTF rates ${esc(e.t.n)} ${e.pts} points better than the market does.${e.band ? ` In past seasons the LTF side beat the spread ${e.band.hit}% of the time at this size of gap, across ${e.band.n.toLocaleString()} games. A coin flip is 50%, and a bettor needs about 52.4% to break even.` : ''}</p>
-    <h3>Why the two might differ</h3><ul class="why">${edgeReasons(g).map(q => `<li>${q}</li>`).join('')}</ul></section>`;
-}
-
-/* confidence: the chance the LTF pick wins. With a market line it blends both lines the way five past seasons say to. */
-const CFD = M.cfd || {cf:{b0:.0775, bm:.0084, bk:.0976}, mk:{agree:{act:74.9, pred:72}, split:{act:43.7, n:252}}, hz:[], steady:{pred:70.9, act:74.2, n:733}};
-const confLabel = s => s < 45 ? 'Contested' : s < 60 ? 'Toss-up' : s < 75 ? 'Lean' : s < 90 ? 'Likely' : 'Very likely';
+/* Confidence: the chance the LTF pick wins, from the LTF line and nothing else. Under it go the reasons to trust the
+   pick more or less. The reasons explain. They do not change the number. */
+const CFD = M.cfd || {hz:[], steady:null};
+const confLabel = s => s < 60 ? 'Toss-up' : s < 75 ? 'Lean' : s < 90 ? 'Likely' : 'Very likely';
 function confidence(g){
   const x = gameLine(g), h = byName[g.h], a = byName[g.a]; if (!x || !h || !a || g.done) return null;
-  const pick = x.m >= 0 ? h : a, other = pick === h ? a : h, m = Math.abs(x.m), pL = phi(m/M.sigma), lp = lineParts(g);
-  const ahead = M.next == null ? 0 : g.w - M.next, why = [];
-  let p = pL, mk = null;
-  if (g.hs != null){ mk = pick === h ? -g.hs : g.hs; const c = CFD.cf; p = 1/(1 + Math.exp(-(c.b0 + c.bm*m + c.bk*mk))); }
-  const score = clamp(Math.round(p*100), 1, 99), ltfPct = clamp(Math.round(pL*100), 50, 99);
-  why.push({d:0, t: x.pts === 0 ? `LTF has the two teams dead even once home field is counted.` : `LTF has ${esc(pick.n)} by ${x.pts}, which on its own is a ${ltfPct}% chance to win.`});
-  if (mk == null) why.push({d:0, t: ahead > 0 ? `No market line is posted yet, so this rests on LTF alone.` : `No market line is posted, so this rests on LTF alone.`});
-  else if (mk > 0 && score <= ltfPct - 3) why.push({d:-1, t:`The market also picks ${esc(pick.n)}, but by only ${half(mk)}. Past seasons say the market's number is the better guide, so the score comes down.`});
-  else if (mk > 0 && score >= ltfPct + 3) why.push({d:1, t:`The market likes ${esc(pick.n)} even more and has them by ${half(mk)}. That lifts the score.`});
-  else if (mk > 0) why.push({d:1, t:`The market agrees and has ${esc(pick.n)} by ${half(mk)}.`});
-  else if (mk < 0) why.push({d:-1, t:`The market disagrees and has ${esc(other.n)} by ${half(mk)}. When that happened in past seasons, the LTF pick won only ${CFD.mk.split.act}% of the time.`});
-  else why.push({d:0, t:`The market has this game as a pick 'em.`});
-  if (ahead >= 1){ const hz = (CFD.hz || []).find(q => ahead+1 >= q.lo && ahead+1 <= q.hi); why.push({d:0, t:`The game is ${NUMW[ahead+1] || ahead+1} weeks away and both teams will change by then.${hz ? ` Picks made ${hz.lab} were right ${hz.act}% of the time, against ${CFD.hz[0].act}% for next week's games.` : ''}`}); }
+  const pick = x.m >= 0 ? h : a, other = pick === h ? a : h, m = Math.abs(x.m), p = phi(m/M.sigma), lp = lineParts(g);
+  const ahead = M.next == null ? 0 : g.w - M.next, why = [], score = clamp(Math.round(p*100), 50, 99), band = confWin(p);
+  why.push({d:0, t: x.pts === 0 ? `LTF has the two teams dead even once home field is counted.` : `LTF has ${esc(pick.n)} by ${x.pts}.${band ? ` In past seasons, picks at this level won ${f1(band.act)}% of the time.` : ''}`});
+  if (ahead >= 1){ const hz = (CFD.hz || []).find(q => ahead+1 >= q.lo && ahead+1 <= q.hi); why.push({d:0, t:`The game is ${NUMW[ahead+1] || ahead+1} weeks away and both teams will change by then.${hz && CFD.hz[0] ? ` Picks made ${hz.lab} were right ${f1(hz.act)}% of the time, against ${f1(CFD.hz[0].act)}% for next week's games.` : ''}`}); }
   if (lp){
     const sign = pick === h ? 1 : -1, rows = [...lp.parts.map(q => ({n:q.name.toLowerCase(), v:q.pts*sign})), ...(lp.hf ? [{n:'home field', v:lp.hf*sign}] : [])];
     const forP = rows.filter(q => q.v >= 0.75).sort((q,r) => r.v-q.v).slice(0,2), ag = rows.filter(q => q.v <= -0.75).sort((q,r) => q.v-r.v).slice(0,2);
     if (forP.length) why.push({d:0, t:`Where the line comes from: ${list(forP.map(q => `${q.n} (+${q.v.toFixed(1)})`))}${ag.length ? `. Working against it: ${list(ag.map(q => `${q.n} (−${Math.abs(q.v).toFixed(1)})`))}` : ''}.`});
     if (!g.n && pick === h && m <= M.hfa && x.pts > 0) why.push({d:-1, t:`Take away home field and ${esc(other.n)} would be the pick.`});
   }
-  for (const t of [pick, other]) if (fbsGamesPlayed(t) <= 2) why.push({d:-1, t:`${esc(t.n)} has faced only ${fbsGamesPlayed(t)} FBS ${fbsGamesPlayed(t)===1?'opponent':'opponents'}, so their numbers are thin.`});
-  for (const t of [pick, other]){ const sp = MOM && momentum(t).spot; if (sp && sp.k === 'bounce' && ahead <= 0) why.push({d:0, t:`${esc(t.n)} lost as ${favTxt(sp.e)} last time out. In past seasons LTF was about ${Math.abs(MOM.upL.ltf).toFixed(0)} points too low on teams in that spot the next week.`}); }
-  if (steadyWord(pick) === 'Steady' && score >= 55) why.push({d:1, t:`${esc(pick.n)} has played to the same level every week. Steady favorites won ${CFD.steady.act}% of the time when LTF expected ${CFD.steady.pred}%.`});
+  for (const t of [pick, other]) if (t.g.length <= 2) why.push({d:-1, t:`${esc(t.n)} has played only ${t.g.length === 1 ? 'one game' : NUMW[t.g.length] + ' games'}, so their numbers are thin.`});
+  const st = CFD.steady;
+  if (st && steadyWord(pick) === 'Steady' && score >= 55) why.push({d:1, t:`${esc(pick.n)} has played to the same level every week. Steady favorites won ${f1(st.act)}% of the time when LTF expected ${f1(st.pred)}%.`});
   else if (steadyWord(pick) === 'Up and down') why.push({d:0, t:`${esc(pick.n)} has swung a lot from week to week, so a surprise either way is more likely.`});
-  return {pick, other, p, score, label: confLabel(score), ltfPct, mk, why};
+  return {pick, other, p, score, label: confLabel(score), why};
 }
-const confMeter = c => `<span class="cm c${c.score < 45 ? 0 : c.score < 60 ? 1 : c.score < 75 ? 2 : c.score < 90 ? 3 : 4}" role="img" aria-label="Confidence ${c.score} out of 100, ${c.label.toLowerCase()}"><i></i><i></i><i></i><i></i><i></i></span>`;
+const confMeter = c => `<span class="cm c${c.score < 60 ? 1 : c.score < 75 ? 2 : c.score < 90 ? 3 : 4}" role="img" aria-label="Confidence ${c.score} out of 100, ${c.label.toLowerCase()}"><i></i><i></i><i></i><i></i><i></i></span>`;
 const confCell = c => !c ? '–' : `<span class="cfs"><b>${c.score}</b>${confMeter(c)}<span class="cf">${c.label}</span></span>`;
 const whyList = (c, n) => !c ? '' : `<ul class="wl">${c.why.slice(0, n || 99).map(w => `<li class="${w.d > 0 ? 'u' : w.d < 0 ? 'dn' : ''}">${w.t}</li>`).join('')}</ul>`;
 
@@ -258,11 +220,11 @@ function breakdown(g){   // bars showing where the line comes from
   return `<div class="bdw"><div class="bdh"><span>${esc(a.ab)}</span><span>${esc(h.ab)}</span></div>${rows.map(bar).join('')}
     <div class="bd tot"><span class="bn">LTF line</span><span class="bt"></span><span class="bv">${lineTxt(x, true)}</span></div></div>`;
 }
-const form = t => t.g.slice(-3).map(e => `<span class="fm ${e.pf>e.pa?'w':'l'}" title="${e.pf>e.pa?'Beat':'Lost to'} ${esc(e.opp)} ${scoreTxt(e)}${e.cm == null ? '' : e.cm>0 ? ', covered' : e.cm<0 ? ', did not cover' : ', push'}">${e.pf>e.pa?'W':'L'}${e.cm > 0 ? '<i></i>' : ''}</span>`).join('');
+const form = t => t.g.slice(-3).map(e => `<span class="fm ${e.pf>e.pa?'w':'l'}" title="${e.pf>e.pa?'Beat':'Lost to'} ${esc(e.opp)} ${scoreTxt(e)}">${e.pf>e.pa?'W':'L'}</span>`).join('');
 const moveWords = mv => !mv ? '<span class="mv same">same</span>' : `<span class="mv ${mv>0?'up':'down'}">${mv>0?'up':'down'} ${Math.abs(mv)}</span>`;
 const lastWeek = t => t.prevRank == null ? '\u2013' : `${t.prevRank}, ${moveWords(t.move)}`;
 function suRecord(){   // how LTF's favorite has done straight up this season, where it had a line before kickoff
   let w = 0, n = 0;
-  for (const g of G){ if (!g.done) continue; const x = gameLine(g); if (!x || x.pts === 0) continue; n++; if ((x.m > 0) === (g.hp > g.ap)) w++; }
+  for (const g of G){ if (!g.done) continue; const x = gameLine(g); if (!x) continue; n++; if ((x.m > 0) === (g.hp > g.ap)) w++; }
   return {w, n};
 }

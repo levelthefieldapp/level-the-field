@@ -5,18 +5,19 @@ const view = $('view'), pop = $('pop');
    pages under the header, so the pages that belong together are always one click apart. */
 const SECTIONS = [
   {k:'home', label:'This week', pages:[]},
-  {k:'rankings', label:'Rankings', pages:[['rankings','LTF rankings'],['conferences','Conferences'],['momentum','Momentum'],['radar','Under the radar'],['reputation','Reputation gap'],['luck','Luck'],['weights','Build your own']]},
-  {k:'games', label:'Games', pages:[['games','Scores and schedule'],['picks','Picks'],['spread','Spread'],['recap','Recap']]},
+  {k:'rankings', label:'Rankings', pages:[['rankings','LTF rankings'],['weights','Build your own'],['conferences','Conferences'],['leagues','League strength'],['momentum','Momentum'],['radar','Under the radar'],['luck','Luck']]},
+  {k:'games', label:'Games', pages:[['games','Scores and schedule'],['picks','Picks'],['upsets','Upset watch'],['buysell','Buying and selling'],['recap','Recap']]},
   {k:'teams', label:'Teams', pages:[['teams','All teams'],['stats','Stats'],['compare','Compare'],['blind','Blind résumé']]},
   {k:'playoff', label:'Playoff', pages:[['playoff','Bracket'],['odds','Season odds']]},
-  {k:'scorecard', label:'Track record', pages:[['scorecard','Scorecard'],['track','LTF track record'],['model','Model tracker'],['how','How it works'],['about','About']]},
+  {k:'scorecard', label:'Track record', pages:[['scorecard','Scorecard'],['track','LTF track record'],['inputs','What goes in'],['how','How it works'],['about','About']]},
 ];
 const PARENT = {team:'teams', game:'games', conference:'conferences', contact:'about'};      // a detail page lights up the page it sits under
 const ALLPAGES = [...SECTIONS.flatMap(s => s.pages), ['contact','Contact']];
 const sectionOf = page => SECTIONS.find(s => s.k === page || s.pages.some(p => p[0] === page)) || null;
 const VIEWS = {home:viewHome, rankings:viewRankings, teams:viewTeams, team:viewTeam, conferences:viewConferences, conference:viewConference,
-               games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, spread:viewSpread,
-               track:viewTrack, weights:viewWeights, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, model:viewModel, reputation:viewReputation, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
+               games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, upsets:viewUpsets, buysell:viewBuySell, leagues:viewLeagues, inputs:viewInputs,
+               track:viewTrack, weights:viewWeights, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
+const MOVED = {spread:'picks', model:'scorecard', reputation:'radar'};      // pages retired on October 7, 2026. An old link lands on the nearest page that is still here.
 function ribbon(){
   const games = nextGames().filter(x => x.pr).sort((a,b) => Math.min(byName[a.g.h].rank, byName[a.g.a].rank) - Math.min(byName[b.g.h].rank, byName[b.g.a].rank)).slice(0,16);
   if (!games.length) return `<div class="rib-h">Season complete<small>Final LTF Index</small></div><a class="gm all" href="${L('rankings')}">Final rankings</a>`;
@@ -37,9 +38,9 @@ function shell(){
   const col = (h, arr) => `<div><h3>${h}</h3>${arr.map(([k,l]) => `<a href="${L(k)}">${l}</a>`).join('')}</div>`;
   const off = store.get('ltf.logos') === false;
   $('foot').innerHTML = `<nav class="fnav" aria-label="Footer">${SECTIONS.filter(s => s.pages.length).map(s => col(s.label, s.k === 'scorecard' ? [...s.pages, ['contact','Contact']] : s.pages)).join('')}</nav>
-    <p class="fine"><b>${esc(BRAND)}</b> Every team, one scale. ${M.season} season, LTF Index through week ${M.through}. Updated ${builtTxt(true)}.${STALE ? ' The daily update has not run since then.' : ''}</p>
+    <p class="fine"><b>${esc(BRAND)}</b> Every team, one scale. This season only. ${M.season} season, LTF Index through week ${M.through}. Updated ${builtTxt(true)}.${STALE ? ' The daily update has not run since then.' : ''}</p>
     ${LOGO_OK && !LOGOS_OFF ? `<p class="fine">Team logos are ${off ? 'off' : 'on'}. <button type="button" class="more inl" data-logos="${off ? 'on' : 'off'}">${off ? 'Show logos' : 'Use team colors instead'}</button></p>` : ''}
-    <p class="fine">For information and entertainment. Nothing here is betting advice. This site is independent and is not connected to any school, conference or sportsbook. Team names, colors and logos belong to the schools. Data from the public cfbfastR data sets and the CollegeFootballData.com API.</p>`;
+    <p class="fine">Built from this season's games and nothing else: no polls, no preseason rankings, no betting lines. For fun and for arguments. Nothing here is betting advice. This site is independent and is not connected to any school, conference or sportsbook. Team names, colors and logos belong to the schools. Data from the public cfbfastR data sets and the CollegeFootballData.com API.</p>`;
 }
 function controls(show){
   $('controls').hidden = !show; if (!show) return;
@@ -57,6 +58,7 @@ function render(){
   const wq = parseWeights(R.q.w);
   if (wq && weightStr(wq) !== weightStr(W)){ W = wq; store.set('ltf.weights', W); recompute(); }
   hidePop();
+  if (MOVED[R.page]){ go(L(MOVED[R.page]), {replace:true}); return; }
   const v = (VIEWS[R.page] || viewNotFound)();
   document.title = v.title ? `${v.title} | ${BRAND}` : BRAND;
   $('top').innerHTML = chrome() + fillTop(v.top, v);
@@ -211,7 +213,7 @@ let resizeTimer, lastW = window.innerWidth; window.addEventListener('resize', ()
   cur = start; R = parse(start);
   if (PATHS && !wantCards){ let at = ''; try { at = location.pathname + location.search + location.hash; } catch(e){} if (at !== start) setUrl(start, true); }      // an old #/ link lands here, then shows its real address
   const saved = store.get('ltf.weights');
-  W = parseWeights(R.q.w) || (saved && parseWeights(COMP.map(c => saved[c.k]).join('-'))) || {...DEFAULTS};
+  W = parseWeights(R.q.w) || (saved && COMP.every(c => Number.isFinite(saved[c.k])) && parseWeights(COMP.map(c => saved[c.k]).join('-'))) || {...DEFAULTS};      // weights saved under an older formula no longer fit, so they are dropped
   recompute();
   {   // what changed since the last visit, for followed teams (or the top three)
     const seen = store.get('ltf.seen');

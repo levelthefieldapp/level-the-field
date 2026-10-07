@@ -3,25 +3,17 @@ function gameList(games){
   const side = (n, win) => { const t = byName[n]; return `<span class="gt${win?' w':''}">${t ? badge(t,'sm') : '<span class="bdg sm fcs" aria-hidden="true"><b>FCS</b></span>'}<span>${esc(n)} <small>${t ? t.rank : 'FCS'}</small></span></span>`; };
   const anyUp = games.some(g => !g.done), anyDone = games.some(g => g.done);
   const rows = games.map(g => {
-    const x = gameLine(g), o = g.done ? outcome(g) : null, mk = marketTxt(g, true);
-    let res = '', last = '';
-    if (g.done){
-      if (o.cover !== undefined) res = o.cover === null ? 'Push' : `${esc((byName[o.cover] || {ab:o.cover}).ab)} covered by ${o.coverBy}`;
-      if (x && x.pts !== 0) last = (x.m > 0) === (g.hp > g.ap) ? 'LTF had the winner' : '<span class="cf">LTF missed the winner</span>';
-    } else {
-      const e = edgeOf(g), c = confidence(g);
-      if (e) res = e.none ? '<span class="cf">No edge</span>' : `${esc(e.t.ab)} +${e.pts}`;
-      if (c) last = `<b class="cnum">${c.score}</b> <span class="cf">${c.label}</span>`;
-    }
+    const x = gameLine(g);
+    let last = '';
+    if (g.done){ if (x) last = (x.m > 0) === (g.hp > g.ap) ? `LTF had the winner <span class="cf">off by ${Math.abs(g.hp - g.ap - x.m).toFixed(1)}</span>` : `<span class="cf">LTF missed the winner</span>`; }
+    else { const c = confidence(g); if (c) last = `<b class="cnum">${c.score}</b> <span class="cf">${c.label}</span>`; }
     return `<a class="gline" href="${gameL(g)}"><span class="gd">${fmtDay(g.d)}${g.n ? ', neutral' : ''}</span>
       <span class="tms">${side(g.a, g.done && g.ap>g.hp)}${side(g.h, g.done && g.hp>g.ap)}</span>
       <span class="sc">${g.done ? `${g.ap}<br>${g.hp}` : `<small>${g.tbd ? 'Time TBA' : fmtTime(g.d)}</small>`}</span>
       <span class="v">${x ? `<span class="lbl">LTF line: </span>${lineTxt(x, true)}` : ''}</span>
-      <span class="v">${mk ? `<span class="lbl">Market: </span>${mk}` : ''}</span>
-      <span class="v">${res ? `<span class="lbl">${g.done ? 'Spread: ' : 'LTF Edge: '}</span>${res}` : ''}</span>
       <span class="v">${last ? `<span class="lbl">${g.done ? '' : 'Confidence: '}</span>${last}` : ''}</span></a>`;
   }).join('');
-  return `<div class="glist"><div class="gline head"><span>Date</span><span>Game</span><span>${anyDone ? 'Score' : 'Kickoff'}</span><span data-tip="line">LTF line</span><span data-tip="market">Market line</span><span data-tip="${anyUp ? 'lean' : 'cover'}">${anyUp && anyDone ? 'Spread result or LTF Edge' : anyUp ? 'LTF Edge' : 'Against the spread'}</span><span${anyUp ? ' data-tip="conf"' : ''}>${anyUp && anyDone ? 'Winner call or confidence' : anyUp ? 'Confidence' : 'Winner call'}</span></div>${rows}</div>`;
+  return `<div class="glist"><div class="gline head"><span>Date</span><span>Game</span><span>${anyDone ? 'Score' : 'Kickoff'}</span><span data-tip="line">${anyDone && !anyUp ? 'LTF line, before kickoff' : 'LTF line'}</span><span${anyUp ? ' data-tip="conf"' : ''}>${anyUp && anyDone ? 'Winner call or confidence' : anyUp ? 'Confidence' : 'Winner call'}</span></div>${rows}</div>`;
 }
 function viewGames(){
   const wk = WEEKS.includes(+R.q.week) ? +R.q.week : (M.next ?? M.through), q = findText();
@@ -29,13 +21,13 @@ function viewGames(){
   let games = G.filter(g => g.w === wk && [g.h, g.a].some(n => byName[n] && inGroup(byName[n])));
   if (q) games = games.filter(g => g.h.toLowerCase().includes(q) || g.a.toLowerCase().includes(q));
   const done = weekDone(wk);
-  const dek = `<b>Week ${wk}, ${groupKey()==='all' ? 'every game' : esc(groupLabel())}.</b> ${done ? 'Final scores, with the LTF line as it stood before kickoff and how each game went against the market.' : `The LTF line and a confidence score for every game, next to the market line${wk === M.next ? '' : ' where an early one is posted'}. Select a game for the reasons behind the pick.`}`;
+  const dek = `<b>Week ${wk}, ${groupKey()==='all' ? 'every game' : esc(groupLabel())}.</b> ${done ? 'Final scores, with the LTF line as it stood before kickoff and whether it had the winner.' : `The LTF line and a confidence score for every game. Select a game for the reasons behind the pick.`}`;
   const all = G.filter(g => g.w === wk), left = all.filter(g => !g.done), fin = all.length - left.length;
   const big = left.filter(g => byName[g.h] && byName[g.a]).sort((a,b) => (byName[a.h].rank + byName[a.a].rank) - (byName[b.h].rank + byName[b.a].rank))[0];
   const tally = fin ? scoreTally(scoreRows().filter(r => r.g.w === wk)).ltf : null;
   const lead = `${all.length} games in week ${wk}${fin && left.length ? `, ${fin} of them final` : ''}.`
     + (big ? ` The biggest ${fin ? 'left ' : ''}by rank: <a class="tlink" href="${gameL(big)}">No. ${byName[big.a].rank} ${esc(big.a)} ${big.n ? 'vs' : 'at'} No. ${byName[big.h].rank} ${esc(big.h)}</a>, ${fmtDay(big.d)}.` : '')
-    + (tally && tally.w + tally.l ? ` LTF has had the winner in ${tally.w} of ${tally.w + tally.l} with a betting line.` : '');
+    + (tally && tally.w + tally.l ? ` LTF has had the winner in ${tally.w} of ${tally.w + tally.l}.` : '');
   return {title:`Week ${wk} games`, controls:true, lead, top: pageTop('Games', dek),
     body: weeks + (games.length ? gameList(games) : `<p class="empty">No games match. Clear the search box or pick a different week or group.</p>`) +
       (done ? `<p class="hint after">Weeks 1 and 2 have no LTF line, since there were no results yet to build one from. <a class="txt" href="${L('track')}">See the full track record</a></p>`
@@ -58,12 +50,10 @@ function tape(A, B){   // A is the road team, B the home team
   return `${advKey()}<div class="scroll"><table class="tape"><tbody>
     ${grp('Overall')}${row(term('index'), A.idx.toFixed(1), B.idx.toFixed(1), A.rank, B.rank, (A.idx - B.idx)/14)}
     ${COMP.map(c => row(term(c.k, c.name), ord(A.rk[c.k]), ord(B.rk[c.k]), A.rk[c.k], B.rk[c.k], A.z[c.k] - B.z[c.k], true)).join('')}
-    <tr><td>${recStr(A.ats.all)}</td><th scope="row">${term('ats')}</th><td>${recStr(B.ats.all)}</td></tr>
     ${grp(`When ${esc(A.n)} has the ball: ${esc(A.n)}'s offense against ${esc(B.n)}'s defense`)}${ks.map(s => row(term(s.k, s.n), s.f(A.d[s.o]), s.f(B.d[s.d]), A.rk[s.o], B.rk[s.d], goodZ(A, s, 'o') - goodZ(B, s, 'd'))).join('')}
     ${grp(`When ${esc(B.n)} has the ball: ${esc(A.n)}'s defense against ${esc(B.n)}'s offense`)}${ks.map(s => row(term(s.k, s.n), s.f(A.d[s.d]), s.f(B.d[s.o]), A.rk[s.d], B.rk[s.o], goodZ(A, s, 'd') - goodZ(B, s, 'o'))).join('')}
   </tbody></table></div><p class="hint after">Green marks the side with the advantage in each row, and the deeper the green, the bigger the gap. The small number is the national rank. Shading goes by how far apart the two numbers are next to the rest of the country, so two top-10 units can still be a slight edge. Numbers are season to date and adjusted for opponent. Tap a stat name for what it means.</p>`;
 }
-const spreadTxt = (g, hs) => hs == null ? null : hs === 0 ? "Pick 'em" : `${esc(hs < 0 ? g.h : g.a)} ${signed(-Math.abs(hs))}`;
 function viewGame(){
   const g = gameById[R.id]; if (!g) return viewNotFound();
   const A = byName[g.a], B = byName[g.h], x = gameLine(g), o = g.done ? outcome(g) : null;
@@ -72,47 +62,42 @@ function viewGame(){
   const head = `<div class="gamehead">${side(A, g.a, 'l', g.done ? g.ap : null)}<div class="mid"><span>${g.done ? 'Final' : g.n ? 'vs' : 'at'}<small>${fmtDay(g.d)}</small>${g.done || g.tbd ? '' : `<small>${fmtTime(g.d)}</small>`}</span></div>${side(B, g.h, 'r', g.done ? g.hp : null)}</div>`;
   const where = `${g.n ? 'Neutral site' : `At ${esc(g.h)}`}${g.c ? ', conference game' : ''}.`;
   const pFav = x ? Math.max(x.pHome, 1-x.pHome) : null;
-  const moved = g.ho != null && g.hs != null && g.ho !== g.hs;
   const fIdx = fact(term('line') + (g.done ? ', before kickoff' : ''), x ? lineTxt(x) : 'None', x ? `${esc(x.pHome>=.5?g.h:g.a)} to win ${clamp(Math.round(pFav*100),50,99)}% of the time` : (!A || !B) ? 'No line against FCS teams' : 'Too early in the season for one');
-  const fMkt = fact(term('market'), marketTxt(g) || 'None posted', `${moved ? `${term('open', 'Opened')} ${spreadTxt(g, g.ho)}. ` : ''}${g.ou != null ? `Total ${g.ou}` : (g.hs != null ? '' : 'Lines usually post the week of the game')}`);
   let facts = '', story = '', sections = '';
   if (g.done){
-    const fRes = o.cover === undefined ? '' : fact('Against the spread', o.cover === null ? 'Push' : `${esc(o.cover)} covered`, `${o.cover === null ? 'Landed exactly on the number' : `by ${o.coverBy} points`}${o.ou ? `. Total: ${o.ou.toLowerCase()} ${g.ou}` : ''}`);
-    let fTrk = '', told = '';
+    let fRes = '', fMiss = '', told = '';
     if (x){
-      const act = g.hp - g.ap, ei = Math.abs(act - x.m), right = x.pts === 0 ? null : (x.m > 0) === (act > 0);
-      told = `Before kickoff the LTF line was ${x.pts === 0 ? "a pick 'em" : `${esc(x.fav.n)} by ${x.pts}`}. ${right === null ? '' : right ? 'LTF had the winner right' : 'LTF had the wrong winner'}${right === null ? 'It' : ', and it'} missed the margin by ${ei.toFixed(1)} points.`;
-      if (g.hs != null){ const em = Math.abs(act + g.hs);
-        fTrk = fact('Which line was closer', Math.abs(ei-em) < 0.25 ? 'Even' : ei < em ? 'LTF' : 'The market', `LTF missed by ${ei.toFixed(1)}, market by ${em.toFixed(1)}`); }
+      const act = g.hp - g.ap, ei = Math.abs(act - x.m), right = (x.m > 0) === (act > 0), pw = act > 0 ? x.pHome : 1 - x.pHome, lean = x.m > 0 ? g.h : g.a;
+      told = `Before kickoff the LTF line was ${x.pts === 0 ? `a pick 'em, leaning ${esc(lean)} by a hair` : `${esc(x.fav.n)} by ${x.pts}`}. ${right ? 'LTF had the winner right' : 'LTF had the wrong winner'}, and it missed the margin by ${ei.toFixed(1)} points.${right === false ? ` ${esc(o.winner)} had been given ${aPct(clamp(Math.round(pw*100),1,49))} chance.` : ''}`;
+      fRes = fact('Winner call', right ? 'Right' : 'Wrong', `${esc(o.winner)} had ${aPct(right ? clamp(Math.round(pw*100),50,99) : clamp(Math.round(pw*100),1,50))} chance`);
+      fMiss = fact('LTF missed the margin by', ei.toFixed(1) + ' points', `The typical miss is about ${BT.miss || 13}`);
     }
-    facts = fIdx + fMkt + fRes + fTrk;
+    facts = fact('Final margin', `${esc(o.winner)} by ${Math.abs(o.mar)}`, where) + fIdx + fRes + fMiss;
     story = `${esc(o.winner)} won by ${Math.abs(o.mar)}. ${where}`;
     const ea = A && A.g.find(e => e.id === g.id), eb = B && B.g.find(e => e.id === g.id);
     const scores = [ea && `${esc(A.n)} ${Math.round(gameScore(A, ea))}`, eb && `${esc(B.n)} ${Math.round(gameScore(B, eb))}`].filter(Boolean);
-    sections = `<section class="sec"><h2>What happened</h2><div class="prose"><p>${told || 'There was no LTF line for this game. LTF needs at least two weeks of results before it sets one.'}</p>
+    sections = `<section class="sec"><h2>What happened</h2><div class="prose"><p>${told || (!A || !B ? 'There is no LTF line against an FCS team. The game still counts in the ratings, with every lower-division opponent treated as one pooled team.' : 'There was no LTF line for this game. LTF needs two weeks of results before it sets one.')}</p>
         ${scores.length ? `<p>${term('gs', 'Game scores')}: ${scores.join(', ')}. An average performance is 50.</p>` : ''}</div></section>
       ${x ? `<section class="sec"><h2>Where the LTF line came from</h2><p class="hint">The line before kickoff, split into its parts. Each bar points toward the team that part favored.</p>${breakdown(g)}</section>` : ''}`;
   } else {
-    const ps = projScore(g), e = edgeOf(g), c = confidence(g);
+    const ps = projScore(g), c = confidence(g);
     const fConf = c ? fact(term('conf'), `${c.score} <span class="of">of 100</span>`, `${confMeter(c)} ${c.label}. Pick: ${esc(c.pick.n)}`) : '';
-    const fPs = ps ? fact(term('ps'), `${esc(A.ab)} ${ps.ap}, ${esc(B.ab)} ${ps.hp}`, `Total ${Math.round(ps.tot)}${g.ou != null ? `, market total ${g.ou}` : ''}`) : '';
-    const fEdge = !e ? '' : fact(term('lean'), e.none ? 'None' : `${esc(e.t.n)} +${e.pts}`, e.none ? 'LTF and the market are within a point' : `LTF rates ${esc(e.t.ab)} ${e.pts} points better than the market does`);
-    const pk = PICKS.find(q => q.id === g.id);
-    const fMod = g.mm == null ? '' : fact('Prediction model', g.mm === 0 ? "Pick 'em" : `${esc(g.mm > 0 ? g.h : g.a)} ${signed(-half(g.mm))}`, `${pk && Math.abs(pk.mm + pk.hs) >= 4 ? `Tracked pick: ${esc((pk.mm + pk.hs) > 0 ? g.h : g.a)}. ` : ''}<a class="txt" href="${L('model')}">Model tracker</a>`);
-    facts = fIdx + fMkt + fConf + fEdge + fPs + fMod;
+    const fPs = ps ? fact(term('ps'), `${esc(A.ab)} ${ps.ap}, ${esc(B.ab)} ${ps.hp}`, `Total ${Math.round(ps.tot)}`) : '';
+    const fUp = x && pFav < .7 ? fact('Upset watch', `${clamp(Math.round((1-pFav)*100),1,50)}%`, `${esc((x.fav === B ? A : B).n)}'s chance to win. <a class="txt" href="${L('upsets')}">Upset watch</a>`) : '';
+    facts = fIdx + fConf + fPs + fUp;
     story = `Week ${g.w}. ${where}`;
     const ph = x ? clamp(Math.round(x.pHome*100),1,99) : 0;
     sections = x ? `<section class="sec"><h2>Why LTF has it this way</h2><div class="dgrid"><div class="prose">${preview(g)}</div><div><p class="hint">The line, split into its parts. Each bar points toward the team that part favors.</p>${breakdown(g)}</div></div></section>
-      ${c ? `<section class="sec"><h2>Confidence: ${c.score}, ${c.label.toLowerCase()}</h2><p class="hint">The chance the pick, ${esc(c.pick.n)}, wins the game. A 50 is a coin flip. A green mark supports the pick and a red mark counts against it.</p>${whyList(c)}</section>` : ''}
-      <section class="sec"><h2>Win chance by the LTF line</h2><div class="wp" role="img" aria-label="${esc(g.a)} ${100-ph}%, ${esc(g.h)} ${ph}%"><span style="width:${100-ph}%;background:${esc(A.col)};color:${A.fg}">${esc(A.ab)} ${100-ph}%</span><span style="width:${ph}%;background:${esc(B.col)};color:${B.fg}">${ph}% ${esc(B.ab)}</span></div>
-        <p class="hint after">This is LTF on its own, before the market is taken into account. When LTF says 70%, that team has won about 70% of the time. <a class="txt" href="${L('track')}">See the proof</a></p></section>
-      ${disagreement(g)}${momGame(g)}` : momGame(g);
+      ${c ? `<section class="sec"><h2>Confidence: ${c.score}, ${c.label.toLowerCase()}</h2><p class="hint">The chance the pick, ${esc(c.pick.n)}, wins the game. A 50 is a coin flip. Below are the reasons to trust it more or less. A green mark supports the pick and a red mark counts against it. LTF cannot see injuries, suspensions or a change at quarterback.</p>${whyList(c)}</section>` : ''}
+      <section class="sec"><h2>Win chance</h2><div class="wp" role="img" aria-label="${esc(g.a)} ${100-ph}%, ${esc(g.h)} ${ph}%"><span style="width:${100-ph}%;background:${esc(A.col)};color:${A.fg}">${esc(A.ab)} ${100-ph}%</span><span style="width:${ph}%;background:${esc(B.col)};color:${B.fg}">${ph}% ${esc(B.ab)}</span></div>
+        <p class="hint after">Worked out from the LTF line. When LTF says 70%, that team has won about 70% of the time over ${NUMW[BT.n] || 'twelve'} past seasons. <a class="txt" href="${L('track')}">See the proof</a></p></section>
+      ${momGame(g)}` : `<section class="sec"><h2>No LTF line</h2><div class="prose"><p>${!A || !B ? 'LTF does not set a line against an FCS team. The game will still count in the ratings once it is played, with every lower-division opponent treated as one pooled team.' : 'LTF needs two weeks of results before it sets a line.'}</p></div></section>`;
   }
   const tp = A && B ? `<section class="sec"><h2>${g.done ? 'How they compare now' : 'The matchup, stat by stat'}</h2>${tape(A, B)}
       <p class="next"><a class="txt" href="${L('compare', null, {a:A.slug, b:B.slug, site:g.n?'n':'b'})}">Open this matchup in the compare tool</a></p></section>` : '';
   return {title:`${g.a} ${g.n?'vs':'at'} ${g.h}`, top: crumbs([['Games', L('games')], [`Week ${g.w}`, L('games', null, {week:g.w})], [`${esc(g.a)} ${g.n?'vs':'at'} ${esc(g.h)}`]]),
     body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${sections}${tp}
-      ${x || g.hs != null ? fine : ''}`};
+`};
 }
 
 /* ================= charts: any two numbers for every team, with zoom ================= */
@@ -122,21 +107,23 @@ const AXES = [
   {k:'off', n:'Offense rating', grp:'LTF', get:t => rating(t.z.off), d:0},
   {k:'def', n:'Defense rating', grp:'LTF', get:t => rating(t.z.def), d:0},
   {k:'res', n:'Résumé rating', grp:'LTF', get:t => rating(t.z.res), d:0},
-  {k:'cmp', n:'Computer ratings', grp:'LTF', get:t => rating(t.z.cmp), d:0},
+  {k:'mar', n:'Scoring margin rating', grp:'LTF', get:t => rating(t.z.mar), d:0},
+  {k:'h1', n:'First-half rating', grp:'LTF', get:t => rating(t.z.h1), d:0},
+  {k:'marp', n:'Scoring margin, points a game', grp:'LTF', get:t => t.d.mar, d:1, sign:true},
+  {k:'h1p', n:'First-half margin, points', grp:'LTF', get:t => t.d.h1, d:1, sign:true},
   ...STATS.filter(s => s.o).map(s => ({k:s.o, n:s.n, grp:'Offense', get:t => t.d[s.o], fs:s.f})),
   {k:'netOpp', n:'Net points per scoring opportunity', grp:'Offense', get:t => t.netOpp, d:2, sign:true},
   ...STATS.map(s => ({k:s.d, n:s.n + (s.dHigh ? '' : ' allowed'), grp:'Defense', get:t => t.d[s.d], fs:s.f, low:!s.dHigh})),
-  {k:'ltfp', n:'LTF rating, in points', grp:'Market and luck', get:t => idxPts(t), d:1, sign:true},
-  {k:'mkt', n:'Market rating, in points', grp:'Market and luck', get:t => t.d.mkt, d:1, sign:true},
-  {k:'luck', n:'Luck, points a game', grp:'Market and luck', get:t => t.luck, d:1, sign:true},
-  {k:'swing', n:'Week-to-week swing', grp:'Market and luck', get:t => t.swing, d:0, low:true},
-  {k:'wins', n:'Wins', grp:'Market and luck', get:t => t.w, d:0},
+  {k:'luck', n:'Luck, points a game', grp:'Luck and results', get:t => t.luck, d:1, sign:true},
+  {k:'swing', n:'Week-to-week swing', grp:'Luck and results', get:t => t.swing, d:0, low:true},
+  {k:'sor', n:'Strength of record', grp:'Luck and results', get:t => t.d.sor, d:0},
+  {k:'wins', n:'Wins', grp:'Luck and results', get:t => t.w, d:0},
 ];
 const CHARTS = [
   {k:'od', n:'Offense and defense', x:'off', y:'def', q:['Strong on both sides','Defense carries the team','Offense carries the team','Struggles on both sides'], note:'Each rating is on the LTF scale, where 50 is an average team.'},
   {k:'rp', n:'Run and pass', x:'oru', y:'opa', q:['Runs and throws well','Lives on the pass','Lives on the run','Struggles both ways'], note:'How much each run and each pass helps the offense score.'},
   {k:'eb', n:'Steady gains and big plays', x:'osr', y:'oexp', q:['Steady and explosive','Boom or bust','Grinds it out','Neither'], note:'Success rate against explosive play rate, both on offense.'},
-  {k:'mk', n:'LTF and the market', x:'ltfp', y:'mkt', diag:true, q:['','The market rates them higher','','LTF rates them higher'], note:'Teams above the dashed line get more respect from the betting market than from LTF. Teams below it get less.'},
+  {k:'hf', n:'First half and full game', x:'h1p', y:'marp', q:['Ahead early and at the end','Finishes stronger than they start','Starts stronger than they finish','Behind early and at the end'], note:'Scoring margin at halftime against scoring margin at the final whistle, both against an average team.'},
   {k:'lk', n:'Luck and quality', x:'luck', y:'idx', q:['Good and lucky','Good despite bad luck','Flattered by luck','Unlucky and struggling'], note:'Lucky teams tend to come back to earth.'},
 ];
 const axisBy = k => AXES.find(a => a.k === k);
@@ -317,7 +304,6 @@ function viewCompare(){
     row(term('index'), A.idx.toFixed(1), B.idx.toFixed(1), A.rank, B.rank, (A.idx - B.idx)/14),
     `<tr><td>Record</td><td>${A.w}-${A.l}</td><td>${B.w}-${B.l}</td></tr>`,
     `<tr><td>On pace for</td><td>${Math.round(pa.w)} wins</td><td>${Math.round(pb.w)} wins</td></tr>`,
-    `<tr><td>${term('ats')}</td><td>${recStr(A.ats.all)}</td><td>${recStr(B.ats.all)}</td></tr>`,
     grp('Parts of the score, national rank'),
     ...COMP.map(c => row(term(c.k, c.name), ord(A.rk[c.k]), ord(B.rk[c.k]), A.rk[c.k], B.rk[c.k], A.z[c.k] - B.z[c.k], true)),
     grp('Offense'),

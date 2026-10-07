@@ -69,12 +69,12 @@ function viewHome(){
   const pool = T.filter(t => t.move && (t.rank <= 60 || t.prevRank <= 60));
   const riser = [...pool].filter(t => t.move > 0).sort((x,y) => y.move-x.move)[0];
   const sleeper = M.apWeek != null ? br.find(t => !t.d.apr) : null;
-  const wg = nextGames().filter(x => x.gap != null).sort((x,y) => Math.abs(y.gap)-Math.abs(x.gap)), split = wg[0];
+  const uw = upsetWatch(M.next), hotSeat = uw.alert[0] || uw.live[0];
   const tile = (t, kick, th, tp, to) => `<a class="tile" style="--tc:${esc(t.col)}" href="${to}"><span class="kick">${badge(t,'sm')}${kick}</span><strong class="th">${th}</strong><span class="tp">${tp}</span></a>`;
   const tiles = [
     riser && tile(riser, 'Biggest riser', `${esc(riser.n)} jumps ${riser.move} spots`, `Now No. ${riser.rank} after ${lastGame(riser)}.`, teamL(riser)),
     sleeper && tile(sleeper, 'Under the radar', `The polls are sleeping on ${esc(sleeper.n)}`, `${sleeper.w}-${sleeper.l} and No. ${sleeper.rank} here, but outside the AP Top 25.`, teamL(sleeper)),
-    split && (e => tile(e.t, `Biggest LTF Edge, week ${M.next}`, `${esc(e.t.n)} +${e.pts}`, `${esc(split.g.a)} ${split.g.n?'vs':'at'} ${esc(split.g.h)}. LTF line: ${lineTxt(split.pr)}. Market: ${marketTxt(split.g)}.`, gameL(split.g)))(edgeOf(split.g)),
+    hotSeat && tile(hotSeat.dog, `Upset watch, week ${M.next}`, `${esc(hotSeat.dog.n)} has ${aPct(Math.round(hotSeat.pDog*100))} shot`, `${hotSeat.g.n ? 'Against' : hotSeat.dog.n === hotSeat.g.h ? 'At home against' : 'At'} No. ${hotSeat.fav.rank} ${esc(hotSeat.fav.n)}. LTF line: ${lineTxt(hotSeat.pr)}.`, L('upsets')),
   ].filter(Boolean).join('');
   const mrow = t => rowB(t, t.rank, `<span class="cf">was ${t.prevRank},</span> ${moveWords(t.move)}`);
   const hot = T.filter(t => t.rank <= 60 && t.g.length >= 3).map(momentum).sort((x,y) => y.score-x.score), mli = m => rowB(m.t, m.t.rank, momTag(m));
@@ -82,25 +82,24 @@ function viewHome(){
   const down = [...pool].filter(t => t.move<0).sort((x,y) => x.move-y.move).slice(0,5).map(mrow).join('');
   const missing = br.filter(t => t.rank <= 30 && !t.d.apr).slice(0,6).map(t => rowB(t, t.rank, metaIdx(t))).join('');
   const g6 = br.filter(t => t.tier==='G6').slice(0,6).map((t,i) => rowB(t, i+1, `${mvTxt(t)} No. ${t.rank} nationally`)).join('');
-  const gaps = wg.slice(0,5).map(x => { const e = edgeOf(x.g);
-    return `<li class="two"><span><span class="l1"><a class="tlink" href="${gameL(x.g)}">${esc(x.g.a)} ${x.g.n?'vs':'at'} ${esc(x.g.h)}</a><span class="meta">${edgeTxt(e, true)}</span></span><span class="sub2">LTF line: ${lineTxt(x.pr)}. Market: ${marketTxt(x.g)}.</span></span></li>`; }).join('');
+  const alerts = (uw.alert.length ? uw.alert : uw.live).slice(0,5).map(upsetLi).join('');
   const mineRow = t => { const st = stakes(t), o = odds(t);
     return `<section class="mine" aria-label="${esc(t.n)}">${badge(t)}<div><div class="t1"><a href="${teamL(t)}">${esc(t.n)}</a> is No. ${t.rank} ${mvTxt(t)}</div>
       <div class="t2">${t.w}-${t.l}, LTF Index ${t.idx.toFixed(1)}. ${st ? `Next: ${st.e.site==='A'?'at':'vs'} ${esc(st.e.opp)}, ${clamp(Math.round(st.p*100),1,99)}% to win. A win puts them near No. ${st.win}, a loss near No. ${st.lose}. ` : ''}Playoff chance ${pct(o.po)}.</div></div>
       <a class="btn go" href="${teamL(t)}">Open</a></section>`; };
   const mine = favs().map(mineRow).join('');
-  const pick = mine ? '' : `<p class="hint pickteam">Have a team? Follow them and they stay pinned to the top of this page. <a class="txt" href="${L('teams')}">Pick your team</a></p>`;
-  const su = suRecord(), tr = trackRecord().all;
+  const pick = (mine ? '' : `<p class="hint pickteam">Have a team? Follow them and they stay pinned to the top of this page. <a class="txt" href="${L('teams')}">Pick your team</a></p>`)
+    + `<p class="hint pickteam">Think wins should count for more, or defense for less? Set your own weights and every page follows. <a class="txt" href="${L('weights')}">Build your own rankings</a></p>`;
   const wkAll = M.next != null ? G.filter(g => g.w === M.next) : [], wkFin = wkAll.filter(g => g.done).length;      // a week turns over once its games are in, so mid-week some of it is already final
   const status = `<p class="status"><b>Updated ${builtTxt()}.</b>${STALE ? ' The daily update has not run since then.' : ''} The LTF Index is through week ${M.through}.${M.next == null ? '' : wkFin ? ` Week ${M.next} is under way, with ${wkFin} of ${wkAll.length} games final. The rankings move when the week is in the books.` : ` Week ${M.next} lines and picks are up.`} <a class="txt" href="${L('scorecard')}">How LTF is doing</a></p>`;
   const start = store.get('ltf.started') ? '' : `<section class="start" aria-label="How to use this site"><div><h2>New here? Three things to know</h2>
-      <ol><li><b>One score for every team.</b> The LTF Index runs 0 to 100, and 50 is an average team. It ignores reputation and polls.</li>
+      <ol><li><b>One score for every team.</b> The LTF Index runs 0 to 100, and 50 is an average team. It is built from this season's games and nothing else: no polls, no preseason rankings, no betting lines.</li>
       <li><b>Every number has a reason.</b> Open any team or game to see what drives it. Point at a column heading, or tap a dotted word, for a plain definition.</li>
-      <li><b>It predicts, with receipts.</b> The <a class="txt" href="${L('picks')}">picks</a> carry a confidence score and the reasons behind it, and the <a class="txt" href="${L('track')}">track record</a> grades every one.</li></ol></div>
+      <li><b>It predicts, with receipts.</b> The <a class="txt" href="${L('picks')}">picks</a> carry a confidence score and the reasons behind it, and the <a class="txt" href="${L('scorecard')}">scorecard</a> grades every one. Think the formula is wrong? <a class="txt" href="${L('weights')}">Build your own</a>.</li></ol></div>
       <button type="button" class="btn" data-dismiss="start">Got it</button></section>`;
   const since = window._since && window._since.length ? `<section class="since" aria-label="Since your last visit"><b>Since your last visit:</b> ${window._since.map(x => `${tl(x.t)} ${x.from === x.t.rank ? `held at No. ${x.from}` : `went from No. ${x.from} to No. ${x.t.rank}`}`).join('. ')}.</section>` : '';
   const body = `${status}${since}${start}${mine}<div class="front">${lead}
-      <section class="sec"><h2>Top 10</h2><p class="hint">LTF Index, with movement since last week.</p><ol class="rows">${top}</ol><p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section></div>
+      <section class="sec"><h2>Top 10</h2><p class="hint">LTF Index, with movement since last week.</p><ol class="rows">${top}</ol><p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a><a class="txt" href="${L('weights')}">Build your own rankings</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section></div>
     ${homeWeek()}
     ${tiles ? `<div class="tiles">${tiles}</div>` : ''}${pick}
     <div class="panels">
@@ -112,7 +111,8 @@ function viewHome(){
       ${M.apWeek != null ? `<section class="panel"><h2>The polls are missing these teams</h2><p class="hint">In the LTF top 30, outside the AP Top 25. The poll is only here for comparison.</p><ol class="rows">${missing || '<li class="two">Every team in the LTF top 30 is also ranked by the AP.</li>'}</ol><a class="more" href="${L('radar')}">More under the radar</a></section>` : ''}
       <section class="panel"><h2>Group of 6 leaders</h2><p class="hint">Same scale as everyone else.</p><ol class="rows">${g6}</ol><a class="more" href="${L('rankings', null, {group:'g6'})}">The full Group of 6 rankings</a></section>
       </div>
-      ${gaps ? `<section class="panel full"><h2>Biggest LTF Edges this week</h2><p class="hint">Week ${M.next} games where the LTF line is furthest from the ${esc(M.book)} line. The edge names the team LTF rates higher than the market does, and by how many points.</p><ol class="rows">${gaps}</ol><a class="more" href="${L('picks')}">All picks, for every week left</a></section>` : ''}
+      ${alerts ? `<section class="panel full"><h2>Upset watch, week ${M.next}</h2><p class="hint">${uw.alert.length ? 'Top 25 teams with the least room for error this week, by the LTF line. The number is the underdog\'s chance to win.' : 'The underdogs with the best chance this week, by the LTF line.'}</p><ol class="rows">${alerts}</ol><a class="more" href="${L('upsets')}">The full upset watch</a></section>` : ''}
+      ${homeBuySell()}
     </div>
     ${homeRecord()}`;
   return {title:'', top:'', body};
@@ -141,24 +141,23 @@ function viewRankings(){
   if (live){
     const scoped = T.filter(inGroup).sort((a,b) => b.cz-a.cz); scoped.forEach((t,i) => { t.srank = i+1; });
     const s = sortState('idx');
-    const val = t => s.key==='idx' ? t.cz : s.key==='rec' ? t.w/Math.max(1,t.w+t.l) + t.w/1000 : s.key==='ats' ? (t.ats.avg ?? -99) : s.key==='move' ? (t.move ?? 0) : COMP.some(c => c.k===s.key) ? t.z[s.key] : t.cz;
+    const val = t => s.key==='idx' ? t.cz : s.key==='rec' ? t.w/Math.max(1,t.w+t.l) + t.w/1000 : s.key==='move' ? (t.move ?? 0) : COMP.some(c => c.k===s.key) ? t.z[s.key] : t.cz;
     let rows = [...scoped];
     if (s.key==='team') rows.sort((a,b) => s.dir*-1*a.n.localeCompare(b.n)); else rows.sort((a,b) => -s.dir*(val(b)-val(a)) || b.cz-a.cz);
     if (q) rows = rows.filter(t => t.n.toLowerCase().includes(q) || t.ab.toLowerCase() === q);
-    const showNat = groupKey() !== 'all', hasMove = HW.length > 1, span = 6 + COMP.length + (showNat?1:0) + (hasMove?1:0);
+    const showNat = groupKey() !== 'all', hasMove = HW.length > 1, span = 5 + COMP.length + (showNat?1:0) + (hasMove?1:0);
     const head = `<tr>${th('Rank','num')}${showNat ? th('National','num','nat') : ''}${sortTh('team','Team','','idx')}${sortTh('rec','Record','num','idx','rec')}${sortTh('idx','LTF','','idx','index')}
-      ${hasMove ? sortTh('move','Last week','num wide','idx','lw') : ''}${COMP.map(c => sortTh(c.k,c.col,'num wide','idx',c.k)).join('')}${th('Last 3','wide','form')}${sortTh('ats','ATS','num wide','idx','ats')}</tr>`;
+      ${hasMove ? sortTh('move','Last week','num wide','idx','lw') : ''}${COMP.map(c => sortTh(c.k,c.col,'num wide','idx',c.k)).join('')}${th('Last 3','wide','form')}</tr>`;
     const body = rows.map(t => `<tr><td class="num rk">${t.srank}</td>${showNat?`<td class="num nat">${t.rank}</td>`:''}${teamCell(t, true)}
       <td class="num rec">${t.w}-${t.l}<small class="wide">${t.cw+t.cl?`${t.cw}-${t.cl}`:''}</small></td>
       <td class="idx"><b>${t.idx.toFixed(1)}</b>${strip(t.idx)}</td>
       ${hasMove ? `<td class="num wide">${lastWeek(t)}</td>` : ''}
-      ${COMP.map(c => { const zv = t.z[c.k]; return `<td class="num c wide ${zv>=0?'pos':'neg'}" style="--t:${clamp(Math.abs(zv)/2.5,0,1).toFixed(2)}">${t.rk[c.k]}</td>`; }).join('')}<td class="wide">${form(t)}</td><td class="num wide">${recStr(t.ats.all)}</td></tr>`).join('');
+      ${COMP.map(c => { const zv = t.z[c.k]; return `<td class="num c wide ${zv>=0?'pos':'neg'}" style="--t:${clamp(Math.abs(zv)/2.5,0,1).toFixed(2)}">${t.rk[c.k]}</td>`; }).join('')}<td class="wide">${form(t)}</td></tr>`).join('');
     table = `<div class="scroll"><table class="grid"><thead>${head}</thead><tbody>${body || emptyRow(span,'team')}</tbody></table></div>`;
     key = colKey([['LTF', 'The LTF Index, from 0 to 100. An average team is 50. The green bar shows the same score as a spot on a field.'],
       hasMove && ['Last week', 'Rank a week ago, then how far the team moved.', true],
-      ['Résumé, Offense, Defense, Ratings', 'The team\'s national rank in each of the four parts of the score. Greener is better and redder is worse.', true],
-      ['Last 3', 'The last three games. An orange dot means the team covered the spread.', true],
-      ['ATS', 'Record against the spread.', true]]);
+      ['Résumé, Offense, Defense, Margin, 1st half', 'The team\'s national rank in each of the five parts of the score. Greener is better and redder is worse.', true],
+      ['Last 3', 'The last three games, oldest first.', true]]);
   } else {
     const i = HW.indexOf(wk), prev = i > 0 ? HW[i-1] : null;
     let rows = T.filter(t => inGroup(t) && t.hist[wk]).sort((a,b) => a.hist[wk].rank-b.hist[wk].rank);
@@ -226,11 +225,12 @@ function say(k,t){
   const d = t.d;
   if (k==='res'){
     const q = d.qw.length ? `Wins over top-50 teams: ${d.qw.map(teamRef).join(', ')}.` : 'No wins over a top-50 team yet.';
-    return `${term('sor')} ${d.sor.toFixed(1)} out of 100, ${ord(t.rk.sor)} nationally. A typical top-25 team would match this record about ${Math.round(100-d.sor)}% of the time. ${q} Scoring margin is ${signed(d.mar)} points a game against an average team (${ord(t.rk.mar)}). The schedule so far ranks ${ord(t.rk.sos)} in difficulty, which strength of record already allows for.`;
+    return `${term('sor')} ${d.sor.toFixed(1)} out of 100, ${ord(t.rk.sor)} nationally. A typical top-25 team would match this record about ${Math.round(100-d.sor)}% of the time. ${q} The schedule so far ranks ${ord(t.rk.sos)} in difficulty, which strength of record already allows for.`;
   }
   if (k==='off') return `${ord(t.rk.oepa)} in EPA per play, ${ord(t.rk.osr)} in success rate, ${ord(t.rk.oppd)} in points per drive and ${ord(t.rk.oppo)} in points per scoring opportunity.`;
   if (k==='def') return `${ord(t.rk.depa)} in EPA per play allowed, ${ord(t.rk.dsr)} in success rate allowed, ${ord(t.rk.dppd)} in points per drive allowed and ${ord(t.rk.stop)} in stop rate.`;
-  if (k==='cmp') return SRC.map(([n,f]) => `${n} ${ord(t.rk[f])}`).join(', ') + '.';
+  if (k==='mar') return `${signed(d.mar)} points a game against an average team, with every opponent and home field allowed for and blowouts capped at 24.`;
+  if (k==='h1') return `${signed(d.h1)} points against an average team by halftime, adjusted the same way.`;
   return '';
 }
 function statTable(t){
@@ -245,26 +245,24 @@ function statTable(t){
 function gameLog(t){
   if (!t.g.length) return '<p class="next">No games played yet.</p>';
   const rows = t.g.map(g => {
-    const o = byName[g.opp], where = g.site==='A' ? 'at' : 'vs', win = g.pf > g.pa;
-    let sp = '–', cv = '–';
-    if (g.spr != null){ sp = line(g.spr); cv = g.cm>0 ? `<span class="up">Covered by ${g.cm}</span>` : g.cm<0 ? `<span class="down">Missed by ${-g.cm}</span>` : 'Push'; }
+    const o = byName[g.opp], where = g.site==='A' ? 'at' : 'vs', win = g.pf > g.pa, ln = ltfSide(t, g);
+    const exp = ln == null ? '<span class="rk2">no line yet</span>' : half(ln) === 0 ? "Pick 'em" : ln > 0 ? `Favored by ${half(ln)}` : `Underdog by ${half(ln)}`;
     return `<tr><td class="num">${g.wk}</td><td>${where} ${teamRef(g.opp)}${g.site==='N'?' <span class="rk2">neutral</span>':''} <span class="rk2">${o ? 'No. '+o.rank : 'FCS'}</span></td>
-      <td><a class="txt" href="${gameL(g.game)}"><b class="${win?'up':'down'}">${win?'W':'L'}</b> ${scoreTxt(g)}</a></td><td class="num">${gsCell(gameScore(t, g))}</td><td class="num wide">${sp}</td><td class="wide">${cv}</td></tr>`;
+      <td><a class="txt" href="${gameL(g.game)}"><b class="${win?'up':'down'}">${win?'W':'L'}</b> ${scoreTxt(g)}</a></td><td class="num">${gsCell(gameScore(t, g))}</td><td class="wide">${o ? exp : '<span class="rk2">FCS opponent</span>'}</td></tr>`;
   }).join('');
   const sc = t.g.map(g => ({g, v: gameScore(t, g)})).sort((a,b) => b.v-a.v);
-  return `<div class="scroll"><table class="log"><thead><tr><th class="num">Wk</th><th>Opponent</th><th>Result</th><th class="num">${term('gs')}</th><th class="num wide">Spread</th><th class="wide">${term('cover')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+  return `<div class="scroll"><table class="log"><thead><tr><th class="num">Wk</th><th>Opponent</th><th>Result</th><th class="num">${term('gs')}</th><th class="wide">${term('line', 'LTF line, before kickoff')}</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${sc.length > 1 ? `<p class="next">Best showing: ${Math.round(sc[0].v)} against ${esc(sc[0].g.opp)}. Weakest: ${Math.round(sc[sc.length-1].v)} against ${esc(sc[sc.length-1].g.opp)}.</p>` : ''}`;
 }
 function remaining(t){
   const p = projection(t);
   if (!p.left.length) return '<p class="next">No regular-season games left.</p>';
-  const rows = p.left.map(x => { const e = x.e, o = byName[e.opp], gl = gameLine(e.game), pc = clamp(Math.round(x.p*100),1,99), c = confidence(e.game);
+  const rows = p.left.map(x => { const e = x.e, o = byName[e.opp], gl = gameLine(e.game), pc = clamp(Math.round(x.p*100),1,99);
     return `<tr><td class="num">${e.wk}</td><td>${e.site==='A'?'at':'vs'} ${teamRef(e.opp)}${e.site==='N'?' <span class="rk2">neutral</span>':''} <span class="rk2">${o ? 'No. '+o.rank : 'FCS'}</span></td>
-      <td><span class="pbar"><i style="width:${pc}%"></i></span>${pc}%</td><td>${gl ? `<a class="txt" href="${gameL(e.game)}">${lineTxt(gl, true)}</a>` : '<span class="rk2">no line</span>'}</td>
-      <td class="num wide">${c ? `<span class="rk2">${esc(c.pick.ab)}</span> <b>${c.score}</b>` : '–'}</td></tr>`; }).join('');
+      <td><span class="pbar"><i style="width:${pc}%"></i></span>${pc}%</td><td>${gl ? `<a class="txt" href="${gameL(e.game)}">${lineTxt(gl, true)}</a>` : '<span class="rk2">no line</span>'}</td></tr>`; }).join('');
   const o = odds(t), wins = Math.round(o.xw), total = t.sched.length;
-  return `<div class="scroll"><table class="log"><thead><tr><th class="num">Wk</th><th>Opponent</th><th>${term('wc')}</th><th>${term('line')}</th><th class="num wide">${term('conf')}</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="next">On pace to finish about <b>${wins}-${total-wins}</b>, with ${o.xw.toFixed(1)} wins on average across the simulated seasons. Chance to win out: ${pct(o.out)}. Conference title games and bowls are not included. Confidence names the team LTF picks and their chance to win, with the market counted where a line is posted. Select a line for the reasons.</p>
+  return `<div class="scroll"><table class="log"><thead><tr><th class="num">Wk</th><th>Opponent</th><th>${term('wc')}</th><th>${term('line')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="next">On pace to finish about <b>${wins}-${total-wins}</b>, with ${o.xw.toFixed(1)} wins on average across the simulated seasons. Chance to win out: ${pct(o.out)}. Conference title games and bowls are not included. Select a line for the reasons behind it.</p>
     <h3>${term('wt', 'Chance to win at least')}</h3><div class="bars nomid wt">${WINS.map((k,i) => `<div class="br"><span>${k} ${k===12 && total===12 ? '(all of them)' : 'games'}</span><span class="tr"><i class="g6" style="width:${(o.ge[i]*100).toFixed(1)}%"></i></span><span class="num">${pct(o.ge[i])}</span></div>`).join('')}</div>`;
 }
 function viewTeam(){
@@ -302,13 +300,12 @@ function viewTeam(){
     <p class="next"><b>Best at:</b> ${list(sw.best)}. <b>Weakest at:</b> ${list(sw.worst)}.</p>
     ${t.luck == null ? '' : `<p class="next"><b>Luck and steadiness.</b> ${Math.abs(t.luck) < 1 ? 'Close to neutral luck' : `About ${Math.abs(t.luck).toFixed(1)} points a game of ${t.luck > 0 ? 'good' : 'bad'} luck`} from fumbles, interceptions and opponents' kicking (${ord(t.luckRank)} luckiest).${t.swing != null ? ` ${steadyWord(t) === 'Steady' ? 'A steady team: their level changes little from week to week.' : steadyWord(t) === 'Up and down' ? 'An up-and-down team: their level swings a lot from week to week.' : 'About as steady as most teams.'}` : ''} <a class="txt" href="${L('luck')}">Luck and steadiness</a></p>`}
     ${t.g.length ? (m => `<p class="next"><b>Momentum.</b> ${momLabel(m.score)}, ${fix1(m.score)} on a scale from minus 10 to plus 10 (${ord(m.rank)} of ${T.length}). ${momWhy(t)} Momentum is tracked for the story and is not part of the score. <a class="txt" href="${L('momentum')}">Momentum</a></p>`)(momentum(t)) : ''}
-    ${t.d.mkt == null ? '' : `<p class="next"><b>What the market thinks.</b> The betting market rates ${esc(t.n)} ${ord(t.mktRank)}${Math.abs(t.d.mkt - idxPts(t)) < 1.5 ? ', about where LTF has them' : `, ${Math.abs(t.d.mkt - idxPts(t)).toFixed(1)} points ${t.d.mkt > idxPts(t) ? 'higher' : 'lower'} than LTF does`}. <a class="txt" href="${L('reputation')}">Reputation gap</a></p>`}
+    ${teamBuySell(t)}
     ${t.h2h.length ? `<p class="next"><b>Ranked ahead of a team that beat them.</b> ${t.h2h.map(x => esc(h2hText(x))).join(' ')}</p>` : ''}
     <div class="dgrid">
       <div><h3>What makes up the score</h3><table class="parts"><tbody>${parts}</tbody></table>${statTable(t)}</div>
       <div><h3>Week by week</h3>${trend(t)}${range}
         <h3>Results</h3>${gameLog(t)}
-        <p class="next">${term('ats')}: <b>${recStr(t.ats.all)}</b>${t.ats.avg!=null?`, covering by an average of <b>${signed(t.ats.avg)}</b> points`:''}.</p>
         <h3>Still to play</h3>${remaining(t)}</div>
     </div></div></div>`;
   return {title:t.n, top: crumbs([['Teams', L('teams')], [esc(conf.label), confL(conf)], [esc(t.n)]]), body};
@@ -322,18 +319,25 @@ function confNumbers(c){
 function viewConferences(){
   const cs = CONFS.filter(c => c.tier).sort((a,b) => b.avg-a.avg);
   const bars = `<div class="bars" role="img" aria-label="Average LTF Index by conference">${cs.map(c => `<div class="br"><a href="${confL(c)}">${esc(c.name)}</a><span class="tr"><i class="${c.tier==='G6'?'g6':''}" style="width:${clamp(c.avg,0,100).toFixed(1)}%"></i></span><span class="num">${c.avg.toFixed(1)}</span></div>`).join('')}</div>
-    <p class="hint">The line marks 50, an average FBS team. Orange bars are Group of 6 conferences. The others are Power 4.</p>`;
+    <p class="hint">The line marks 50, an average FBS team. Orange bars are Group of 6 conferences. The others are Power 4. An average counts every team the same, so a league's weakest teams move it as much as the best ones do. Two leagues within two points of each other are about even. The table shows how many teams each has near the top.</p>`;
   const rows = cs.map(c => { const x = confNumbers(c);
     return `<tr><td class="num rk">${c.rank}</td><td class="cn"><a class="tlink" href="${confL(c)}">${esc(c.name)}</a> <span class="cf">${c.tier==='P4'?'Power 4':'Group of 6'}</span></td><td class="num">${c.prevRank == null ? '–' : `${c.prevRank}, ${moveWords(c.prevRank-c.rank)}`}</td><td class="num">${c.avg.toFixed(1)}${c.prevAvg == null ? '' : ` <span class="cf">${signed(c.avg-c.prevAvg)}</span>`}</td><td class="num">${x.t25}</td><td class="num wide">${x.t50}</td>
       <td class="wide">${tl(c.sorted[0])} <span class="cf">No. ${c.sorted[0].rank}</span></td><td class="num">${wl(x.out)}</td><td class="num wide">${wl(x.p4)}</td></tr>`; }).join('');
   const ind = confByName['Independent'];
   const g6c = cs.find(c => c.tier === 'G6');
-  return {title:'Conferences', card:'conferences', lead: `The ${esc(cs[0].name)} is the strongest conference, with an average LTF Index of ${cs[0].avg.toFixed(1)}. The ${esc(cs[1].name)} is next at ${cs[1].avg.toFixed(1)}.${g6c ? ` The best of the Group of 6 is the ${esc(g6c.name)}, at ${g6c.avg.toFixed(1)}.` : ''}`,
+  // two leagues within two points of each other are about one point apart on the scoreboard, so the page calls them even
+  const near = (a, b) => a && b && Math.abs(a.avg - b.avg) < 2, av = c => c.avg.toFixed(1);
+  const more = (a, b) => { const x = confNumbers(a).t25, y = confNumbers(b).t25; return x === y ? '' : `, and the ${esc((x > y ? a : b).name)} has more teams in the top 25, ${Math.max(x,y)} to ${Math.min(x,y)}`; };
+  const [c1, c2, c3] = cs;
+  const order = near(c1, c2) ? `The ${esc(c1.name)} (${av(c1)}) and the ${esc(c2.name)} (${av(c2)}) are about even at the top by average LTF Index${more(c1, c2)}.`
+    : `The ${esc(c1.name)} has the highest average LTF Index, ${av(c1)}.` + (near(c2, c3) ? ` The ${esc(c2.name)} (${av(c2)}) and the ${esc(c3.name)} (${av(c3)}) are about even behind the ${esc(c1.name)}${more(c2, c3)}.` : ` The ${esc(c2.name)} is next at ${av(c2)}.`);
+  return {title:'Conferences', card:'conferences', lead: `${order}${g6c ? ` The best of the Group of 6 is the ${esc(g6c.name)}, at ${g6c.avg.toFixed(1)}.` : ''}`,
     top: pageTop('Conferences', 'Every conference on the same scale: the average LTF Index across the league, and the record against everyone else.'),
     body: `<section class="sec"><h2>Average LTF Index</h2>${bars}</section>
     <section class="sec"><h2>Conference table</h2>
     <div class="scroll"><table class="grid"><thead><tr>${th('Rank','num')}${th('Conference')}${th('Last week','num','lw')}${th('Average LTF','num','index')}${th('Top 25','num')}${th('Top 50','num wide')}${th('Best team','wide')}${th('Outside the conference','num')}${th('Vs. Power 4','num wide')}</tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="hint after">Records leave out games against FCS teams. "Outside the conference" is the combined record against teams from other conferences.${ind ? ` Notre Dame and UConn are independent. <a class="txt" href="${confL(ind)}">See the independents</a>` : ''}</p></section>`};
+    <p class="hint after">Records leave out games against FCS teams. "Outside the conference" is the combined record against teams from other conferences.${ind ? ` Independents have no conference. <a class="txt" href="${confL(ind)}">See the independents</a>` : ''}</p>
+    <p class="next"><a class="btn" href="${L('leagues')}">League strength: how the leagues have done against each other</a></p></section>`};
 }
 function viewConference(){
   const c = confBySlug[R.id]; if (!c) return viewNotFound();

@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
-Gets this season's betting lines, outside ratings and polls from CollegeFootballData.com
-and saves them to raw/cfb_api.json, where build_data.py picks them up.
+Gets four things from CollegeFootballData.com and saves them to raw/cfb_api.json, where
+build_data.py picks them up. None of them is part of the LTF Index. They are shown next to it:
+
+  the AP poll        for the Under the radar page and the upset watch
+  SP+ and FPI        graded next to LTF on the scorecard
+  closing lines      for finished games, graded on the scorecard as one more yardstick
+
+The index is built from scores and play-by-play alone, so the site updates the same with or
+without this file. If the API is down, this script says so and the update carries on without
+the comparisons. If the key is missing or rejected, it stops, because that needs the owner.
 
 The API key is read from the CFBD_API_KEY environment variable. On GitHub that is the
 repository secret with the same name. The key is never written to a file or printed.
 
-Six API calls per run. Two runs a day is about 370 calls a month, inside the free plan's 1,000.
+Four API calls per run. Two runs a day is about 250 calls a month, inside the free plan's 1,000.
 """
 import datetime, json, os, sys, time, urllib.error, urllib.request
 
@@ -18,11 +26,8 @@ ENDPOINTS = {
     "lines": f"/lines?year={SEASON}",
     "sp": f"/ratings/sp?year={SEASON}",
     "fpi": f"/ratings/fpi?year={SEASON}",
-    "srs": f"/ratings/srs?year={SEASON}",
     "rankings": f"/rankings?year={SEASON}",
-    "talent": f"/talent?year={SEASON}",
 }
-REQUIRED = ["lines", "sp", "fpi", "srs"]      # without these the site would quietly change, so stop instead
 
 
 def get(path, key):
@@ -48,25 +53,30 @@ def main():
         sys.exit("No API key. Set the CFBD_API_KEY environment variable (in GitHub: a repository secret with that name).")
     if any(c.isspace() for c in key):
         sys.exit("The API key has a space or a line break inside it. Paste it again into the CFBD_API_KEY secret, with nothing before or after it.")
-    data, errors = {}, {}
+    data, errors, refused = {}, {}, False
     for name, path in ENDPOINTS.items():
         try:
             rows = get(path, key)
-            if name == "lines":          # keep only what the index uses
+            if name == "lines":          # keep only what the site uses
                 rows = [{"id": r.get("id"), "week": r.get("week"), "seasonType": r.get("seasonType"),
                          "homeTeam": r.get("homeTeam"), "awayTeam": r.get("awayTeam"), "lines": r.get("lines")} for r in rows]
             data[name] = rows
             print(f"{name}: {len(rows)} rows")
         except urllib.error.HTTPError as e:
             errors[name] = f"HTTP {e.code}" + (" (the API rejected the key)" if e.code in (401, 403) else " (call limit reached)" if e.code == 429 else "")
+            refused = refused or e.code in (401, 403)
             print(f"{name} FAILED: {errors[name]}")
         except Exception as e:
             errors[name] = repr(e)[:200]
             print(f"{name} FAILED: {errors[name]}")
         time.sleep(0.3)
-    missing = [n for n in REQUIRED if n not in data]
-    if missing:
-        sys.exit(f"Could not get {', '.join(missing)}. Nothing was saved, so the site keeps showing its last good version. {errors}")
+    if refused:
+        sys.exit("CollegeFootballData rejected the API key. Check the CFBD_API_KEY secret. Nothing was saved, so the site keeps showing its last good version.")
+    if not data:      # the API is down or the call limit is used up. The rankings do not need it, so carry on without the comparisons.
+        print(f"note: nothing came back from CollegeFootballData ({errors}). The update goes on without the AP poll, SP+, FPI and closing lines.")
+        return
+    if errors:
+        print(f"note: could not get {', '.join(errors)}. The update goes on without {'it' if len(errors) == 1 else 'them'}.")
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump({"source": "collegefootballdata.com", "season": SEASON,

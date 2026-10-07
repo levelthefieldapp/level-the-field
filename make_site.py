@@ -24,41 +24,42 @@ from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "src")
-JS = ["core.js", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js",
+JS = ["core.js", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
       "momentum.js", "scorecard.js", "cards.js", "app.js"]
 NAME = "Level the Field"
-BLURB = ("Every FBS team ranked on one scale, built from results, play-by-play efficiency and computer ratings. "
-         "Rankings, team pages, game lines and a playoff picture.")
-SHARE = "Every college football team on one scale. Rankings, game lines and picks that are graded every week."
-WEIGHTS = {"res": 20, "off": 25, "def": 25, "cmp": 30}       # the LTF Index, the same weights the page uses
+SHARE = ("Every college football team on one scale, built from this season's games and nothing else. "
+         "No polls, no preseason rankings, no betting lines. Rankings, picks and an upset watch, graded every week.")
+PARTS = {"res": "résumé", "off": "offense", "def": "defense", "mar": "scoring margin", "h1": "the first half"}      # the five parts of the LTF Index, as they read in a sentence
 
 # Every section page that gets its own address: the name on the browser tab and one line about it.
 PAGES = {
     "rankings": ("LTF rankings", "Every FBS team ranked on one scale, 0 to 100, with movement since last week."),
+    "weights": ("Build your own rankings", "Set your own weights for résumé, offense, defense and scoring margin and watch the rankings change."),
     "conferences": ("Conferences", "Every conference on the same scale: average LTF Index and the record against everyone else."),
-    "momentum": ("Momentum", "Who is heating up and who is cooling off, and which teams are likely to climb or slide."),
+    "leagues": ("League strength", "How the leagues have done against each other this season, and a standing check on whether the rankings play favorites."),
+    "momentum": ("Momentum", "Who is heating up and who is cooling off, by rating trend, recent play, streaks and upsets."),
     "radar": ("Under the radar", "Teams the LTF Index rates well that the polls have not caught up with."),
-    "reputation": ("Reputation gap", "Where the betting market rates a team higher or lower than the LTF Index does."),
     "luck": ("Luck and steadiness", "Which teams have been helped or hurt by fumbles, tipped passes and kicking, and which play to the same level every week."),
-    "weights": ("Build your own rankings", "Set your own weights for results, offense, defense and computer ratings and see the rankings change."),
-    "games": ("Scores and schedule", "Every game by week, with the LTF line, the market line and the final score."),
+    "games": ("Scores and schedule", "Every game by week, with the LTF line and the final score."),
     "picks": ("Picks", "The LTF pick for every game this week, with a confidence score and the reasons behind it."),
-    "spread": ("Spread", "The LTF line next to the market line for every game, and every team's record against the spread."),
-    "recap": ("Weekly recap", "How the LTF picks did last week: winners, the spread, the biggest upsets and the biggest misses."),
+    "upsets": ("Upset watch", "Where an upset is most likely this week: the underdogs with a real chance and the top 25 teams with the least room for error."),
+    "buysell": ("Buying and selling", "Teams on a winning streak with a hard road ahead, and teams on a losing streak with a soft one, by the LTF line. On file every week and graded."),
+    "recap": ("Weekly recap", "How the LTF picks did last week: winners, the biggest upsets and the biggest misses."),
     "teams": ("All teams", "All FBS teams by conference. Every team has a page with their score, stats, results and remaining schedule."),
     "stats": ("Stats", "Every team on one chart, and every stat in one table, adjusted for opponent."),
     "compare": ("Compare two teams", "Any two teams side by side, with the LTF line between them."),
     "blind": ("Blind résumé", "Two real teams with the names taken off. Pick the better one, then see who they are."),
     "playoff": ("Playoff picture", "The 12-team bracket if the season ended today and the committee went by the LTF Index."),
     "odds": ("Season odds", "Each team's chance to make the playoff, win their conference and reach a bowl, from 2,500 simulated seasons."),
-    "scorecard": ("Scorecard", "LTF graded every week against SP+, FPI, a prediction model and the betting line, on the same games."),
-    "track": ("LTF track record", "Every finished game where LTF had a line before kickoff, graded against the result and the market."),
-    "model": ("Model tracker", "A live test of a prediction model against the betting market, graded in public."),
+    "scorecard": ("Scorecard", "LTF graded every week next to SP+, FPI and the betting line, on the same games."),
+    "track": ("LTF track record", "Every finished game where LTF had a line before kickoff, graded on the winner and the margin."),
+    "inputs": ("What goes in, and what stays out", "Everything the LTF Index is built from, and everything it leaves out on purpose: polls, preseason rankings, earlier seasons and betting lines."),
     "how": ("How it works", "What goes into the LTF Index, how picks are made, and what testing has shown."),
     "about": ("About", "What Level the Field is and who it is for."),
     "contact": ("Contact", "How to reach Level the Field."),
 }
 DETAIL = {"team", "game", "conference"}                      # pages that take a name or a number after them
+RETIRED = {"spread": "picks", "model": "scorecard", "reputation": "radar"}      # the same list as MOVED in src/app.js
 
 
 def rd(name):
@@ -102,6 +103,7 @@ def ordinal(n):
 def standings(data):
     """Rank and LTF Index for every team, worked out the way the page does it."""
     teams = data["teams"]
+    WEIGHTS = data["meta"]["wt"]      # the LTF Index, the same weights the page uses
     raw = [sum(WEIGHTS[k] * t["z"][k] for k in WEIGHTS) / sum(WEIGHTS.values()) for t in teams]
     mean = sum(raw) / len(raw)
     sd = math.sqrt(sum((v - mean) ** 2 for v in raw) / len(raw)) or 1.0
@@ -184,7 +186,7 @@ def team_text(r, data, by_name, lm):
     p = r["parts"]
     line = (f"{t['n']} is No. {r['rank']} of {len(data['teams'])} FBS teams in the LTF Index after week {m['through']}, with a score of {r['idx']:.1f}. "
             f"They are {t['w']}-{t['l']}{conf}.")
-    why = f"{ordinal(p['res'])} in résumé, {ordinal(p['off'])} in offense, {ordinal(p['def'])} in defense and {ordinal(p['cmp'])} in computer ratings."
+    why = ", ".join(f"{ordinal(p[k])} in {PARTS[k]}" for k in list(PARTS)[:-1]) + f" and {ordinal(p['h1'])} in {PARTS['h1']}."
     nxt = next((g for g in data["games"] if g["hp"] is None and t["n"] in (g["h"], g["a"])), None)
     nx = ""
     if nxt:
@@ -206,14 +208,14 @@ def game_text(g, by_name, lm):
     if g["hp"] is not None:
         win, lose = (g["h"], g["a"]) if g["hp"] > g["ap"] else (g["a"], g["h"])
         ws, ls = max(g["hp"], g["ap"]), min(g["hp"], g["ap"])
-        paras = [f"Final, week {g['w']}: {win} {ws}, {lose} {ls}.", "The LTF line as it stood before kickoff, how the game went against the market, and how the two teams compare now."]
+        paras = [f"Final, week {g['w']}: {win} {ws}, {lose} {ls}.", "The LTF line as it stood before kickoff, whether it had the winner, and how the two teams compare now."]
         return title, paras, f"Final: {win} {ws}, {lose} {ls}. How the LTF line did, and how the two teams compare."
     line = ""
     if g["id"] in lm:
         pts = round(abs(lm[g["id"]]) * 2) / 2
         line = " LTF line: pick 'em." if pts == 0 else f" LTF line: {g['h'] if lm[g['id']] > 0 else g['a']} by {pts:g}."
     lead = f"{rk(g['a'])}{g['a']} {'vs' if g['n'] else 'at'} {rk(g['h'])}{g['h']}, week {g['w']}, {when(g['d'])}.{line}"
-    return title, [lead, "The LTF pick, the market line, a confidence score and the matchup, stat by stat."], lead
+    return title, [lead, "The LTF pick, a confidence score and the matchup, stat by stat."], lead
 
 
 def find_browser():
@@ -313,7 +315,7 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
     lm = {q["id"]: q["lm"] for q in data.get("picks", []) if "lm" in q}
     top = sorted(st.values(), key=lambda r: r["rank"])
     lead = f"After week {m['through']}: " + ", ".join(f"{r['rank']}. {r['t']['n']}" for r in top[:5]) + "."
-    nav = [("LTF rankings", "rankings/"), ("This week's picks", "picks/"), ("Scores and schedule", "games/"), ("All teams", "teams/")]
+    nav = [("LTF rankings", "rankings/"), ("This week's picks", "picks/"), ("Upset watch", "upsets/"), ("Scores and schedule", "games/"), ("All teams", "teams/")]
 
     # the front page first, so a browser can draw the preview pictures from it
     home = shell("", head_tags("", NAME, SHARE, v, url, "", "og.png", counter), static_view("", NAME, [SHARE, lead], nav), v)
@@ -323,16 +325,16 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
     week = [g for g in data["games"] if g["h"] in st and g["a"] in st and g["w"] in (m.get("next"), m["through"])]
     confs = sorted({t["c"] for t in data["teams"] if t["c"] != "Independent"})
     wanted = ["list/top10"] + [f"team/{slug(n)}" for n in st] + [f"game/{g['id']}" for g in week] + [f"conference/{slug(c)}" for c in confs] + \
-             ["list/tiers", "list/polls", "list/conferences", "list/receipts"]
+             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell"]
     have = draw_cards(out, wanted) if cards else set()
     pic = lambda name, fallback="og.png": f"cards/{name}.png" if name in have else fallback
     if "list/top10" in have:      # the front page and the rankings share the top 10 as their preview
         write(os.path.join(out, "index.html"), shell("", head_tags("", NAME, SHARE, v, url, "", pic("list/top10"), counter), static_view("", NAME, [SHARE, lead], nav), v))
 
     pages = [""]
-    special = {"rankings": "list/top10", "conferences": "list/conferences", "radar": "list/polls", "recap": "list/receipts", "scorecard": "list/receipts"}
+    special = {"rankings": "list/top10", "conferences": "list/conferences", "leagues": "list/conferences", "radar": "list/polls", "recap": "list/receipts", "scorecard": "list/receipts", "buysell": "list/buysell"}
     for key, (title, desc) in PAGES.items():
-        paras = [desc, lead] if key in ("rankings", "teams", "picks", "games") else [desc]
+        paras = [desc, lead] if key in ("rankings", "teams", "picks", "games", "weights") else [desc]
         page = shell("../", head_tags("../", title, desc, v, url, f"{key}/", pic(special.get(key, "-")), counter), static_view("../", title, paras, nav), v)
         write(os.path.join(out, key, "index.html"), page)
         pages.append(f"{key}/")
@@ -358,6 +360,11 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
         page = shell("../../", head_tags("../../", title, short, v, url, f"game/{g['id']}/", pic(f"game/{g['id']}"), counter), static_view("../../", title, paras, links), v)
         write(os.path.join(out, "game", str(g["id"]), "index.html"), page)
         pages.append(f"game/{g['id']}/")
+
+    # pages retired on October 7, 2026. An old link still opens, and the site sends it on to the page that replaced it.
+    for gone, now in RETIRED.items():
+        title, desc = PAGES[now]
+        write(os.path.join(out, gone, "index.html"), shell("../", head_tags("../", title, desc, v, url, f"{now}/", pic(special.get(now, "-")), counter), static_view("../", title, [desc], nav), v))
 
     # a mistyped address: hand it to the front page, which shows the right page or says it is missing
     nf = os.path.join(out, "404.html")

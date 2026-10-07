@@ -91,11 +91,11 @@ async function cardTeam(c, W, H, t){
   const conf = t.c === 'Independent' ? '' : `, ${t.cw}-${t.cl} in the ${t.c}`;
   const mv = t.move == null ? '' : t.move > 0 ? ` Up ${t.move} since last week.` : t.move < 0 ? ` Down ${-t.move} since last week.` : ' Same spot as last week.';
   cText(c, `${t.w}-${t.l}${conf}.${mv}`, P + 178, P + 110, {px:30, wt:600, color:soft, max:W - P*2 - 190});
-  // the numbers: rank and score large, then the four parts of the score
-  const y1 = 322, cols = [[`No. ${t.rank}`, `of ${T.length} teams`, t.rank > 99 ? 2.25 : 1.9], [t.idx.toFixed(1), 'LTF Index', 1.55], ...COMP.map(k => [ord(t.rk[k.k]), k.col.toLowerCase(), 1])];
+  // the numbers: rank and score large, then the five parts of the score
+  const y1 = 322, cols = [[`No. ${t.rank}`, `of ${T.length} teams`, t.rank > 99 ? 2.25 : 1.9], [t.idx.toFixed(1), 'LTF Index', 1.55], ...COMP.map(k => [ord(t.rk[k.k]), k.col.toLowerCase(), .92])];
   const unit = (W - P*2) / cols.reduce((s, q) => s + q[2], 0); let x = P;
   cols.forEach(([big, small, w], i) => {
-    cText(c, big, x, y1, {px: i < 2 ? 104 : 64, wt:900, it:true, w:'condensed', color:fg, max:unit*w - (i < 2 ? 40 : 22)});
+    cText(c, big, x, y1, {px: i < 2 ? 104 : 58, wt:900, it:true, w:'condensed', color:fg, max:unit*w - (i < 2 ? 40 : 22)});
     cText(c, small, x + 2, y1 + 40, {px:26, wt:600, color:soft, max:unit*w - 16});
     x += unit*w;
   });
@@ -133,17 +133,15 @@ async function cardGame(c, W, H, g){
   c.fillStyle = CK.paper; c.fillRect(0, top, W, H - top - foot);
   const x = gameLine(g), tiles = [];
   if (g.done){
-    const o = outcome(g);
-    tiles.push(['LTF line, before kickoff', x ? plain(lineTxt(x)) : 'No line yet', x && x.pts !== 0 ? ((x.m > 0) === (g.hp > g.ap) ? 'LTF had the winner' : 'LTF missed the winner') : '']);
-    tiles.push(['Market line', g.hs == null ? 'None posted' : plain(marketTxt(g)), g.ou != null ? `Total ${g.ou}` : '']);
-    tiles.push(['Against the spread', o.cover === undefined ? 'No line' : o.cover === null ? 'Push' : `${o.cover} covered`, o.cover ? `by ${o.coverBy} points` : '']);
+    const o = outcome(g), right = x ? (x.m > 0) === (g.hp > g.ap) : null, pw = x ? (g.hp > g.ap ? x.pHome : 1 - x.pHome) : null;
+    tiles.push(['Final margin', `${o.winner} by ${Math.abs(o.mar)}`, g.n ? 'Neutral site' : `At ${g.h}`]);
+    tiles.push(['LTF line, before kickoff', x ? plain(lineTxt(x)) : 'No line', right == null ? '' : right ? 'LTF had the winner' : 'LTF missed the winner']);
+    if (x) tiles.push(right === false ? ['The upset', `${Math.round(100*pw)}% chance`, `is what LTF gave ${o.winner}`] : ['LTF missed the margin by', `${Math.abs(g.hp - g.ap - x.m).toFixed(1)} points`, '']);
   } else {
-    const e = edgeOf(g), cf = confidence(g);
-    tiles.push(['LTF line', x ? plain(lineTxt(x)) : 'No line yet', x ? `${x.fav.n} wins ${Math.round(100*Math.max(x.pHome, 1 - x.pHome))}% of the time` : '']);
-    tiles.push(['Market line', g.hs == null ? 'Not posted yet' : plain(marketTxt(g)), g.ou != null ? `Total ${g.ou}` : '']);
-    if (e && !e.none) tiles.push(['LTF Edge', `${e.t.n} +${e.pts}`, 'LTF rates them higher than the market does']);
-    else if (cf) tiles.push(['Confidence', `${cf.score} of 100`, cf.label]);
-    if (cf && e && !e.none) tiles[2][2] = `Confidence ${cf.score}, ${cf.label.toLowerCase()}`;
+    const cf = confidence(g), ps = projScore(g);
+    tiles.push(['LTF line', x ? plain(lineTxt(x)) : 'No line', x ? `${x.fav.n} wins ${Math.round(100*Math.max(x.pHome, 1 - x.pHome))}% of the time` : '']);
+    if (cf) tiles.push(['Confidence', `${cf.score} of 100`, `${cf.label}. Pick: ${cf.pick.n}`]);
+    if (ps && a && h) tiles.push(['Projected score', `${a.ab} ${ps.ap}, ${h.ab} ${ps.hp}`, 'A rough guide']);
   }
   const tw = (W - 112)/tiles.length;
   tiles.forEach(([lab, val, sub], i) => { const tx = 56 + i*tw;
@@ -255,12 +253,34 @@ async function cardConferences(c, W, H){
   cFoot(c, W, H, foot, `Average LTF Index after week ${M.through}. Orange is Group of 6.`);
 }
 
+/* ---------- buying and selling: this week's two lists ---------- */
+function buySellCard(){
+  const weeks = bsWeeks(), w = weeks[weeks.length-1]; if (w == null) return null;
+  const sell = bsTop(w, 'sell'), buy = bsTop(w, 'buy'); return sell.length + buy.length ? {w, sell, buy} : null;
+}
+async function cardBuySell(c, W, H, d){
+  const P = 56, foot = 84, gap = 52, cw = (W - P*2 - gap)/2, max = 4;
+  let y = cHead(c, W, P, 'Buying and selling', null);
+  const col = async (title, sub, cs, x, color) => {
+    cText(c, title, x, y + 14, {px:32, wt:850, w:'semi-condensed', color, max:cw - 220});
+    cText(c, sub, x + cw, y + 14, {px:20, wt:600, color:CK.muted, align:'right', max:cw - 180});
+    c.fillStyle = CK.ink; c.fillRect(x, y + 28, cw, 3);
+    const rowH = Math.floor((H - foot - y - 46)/max), show = cs.slice(0, cs.length > max ? max - 1 : max);
+    await cRows(c, show.map(q => ({t: byName[q.t], name: q.t, note: `${q.r[0]}-${q.r[1]}, ${bsStreak(q)}`, val: `${q.x.toFixed(1)} of ${q.g.length}`})), x, y + 31, cw, rowH, {rank:false, valW:150});
+    if (cs.length > show.length) cText(c, `and ${NUMW[cs.length - show.length] || cs.length - show.length} more`, x, y + 31 + show.length*rowH + rowH/2 + 4, {px:26, wt:600, color:CK.muted, base:'middle'});
+    if (!cs.length) cText(c, 'No team this week.', x, y + 84, {px:26, wt:500, color:CK.muted});
+  };
+  await col('Selling', 'winning streak, hard road ahead', d.sell, P, CK.bad); await col('Buying', 'losing streak, soft road ahead', d.buy, P + cw + gap, CK.good);
+  cFoot(c, W, H, foot, `After week ${d.w}. Wins LTF expects in each team's next games.`);
+}
+
 /* ---------- receipts: how the picks did ---------- */
 function receipts(wk){   // one week's graded record and the season's, counted the way the scorecard counts them
   const rows = scoreRows(), week = +wk || (rows.some(r => r.g.w === M.through) ? M.through : Math.max(0, ...rows.map(r => r.g.w))), wr = rows.filter(r => r.g.w === week);      // the last full week, unless asked for another
   if (!wr.length) return null;
   const tw = scoreTally(wr), ts = scoreTally(rows), tr = trackRecord().rows.filter(r => r.g.w === week);
-  return {week, w: tw.ltf, m: tw.mkt, s: ts.ltf, sm: ts.mkt, ats: {w: tr.filter(r => r.right === true).length, l: tr.filter(r => r.right === false).length, p: tr.filter(r => r.right === null).length}};
+  const ups = tr.filter(r => (r.act > 0 ? r.x.pHome : 1 - r.x.pHome) < .3).length;
+  return {week, w: tw.ltf, s: ts.ltf, ups, n: wr.length};
 }
 async function cardReceipts(c, W, H, r){
   const P = 56, foot = 84, top = H - foot;
@@ -271,17 +291,17 @@ async function cardReceipts(c, W, H, r){
   cText(c, 'Every pick graded, misses included.', P, 132, {px:26, wt:500, color:'rgba(255,255,255,.82)'});
   cText(c, `${r.w.w}-${r.w.l}`, P - 6, 352, {px:236, wt:900, it:true, w:'condensed', color:'#fff', max:W*0.5 - P});
   cText(c, `picking winners, ${Math.round(100*r.w.pct)}%`, P, 402, {px:32, wt:700, color:'#fff'});
-  cText(c, `The betting line went ${r.m.w}-${r.m.l}.`, P, 444, {px:26, wt:500, color:'rgba(255,255,255,.82)'});
+  cText(c, `Built from this season's games and nothing else.`, P, 444, {px:26, wt:500, color:'rgba(255,255,255,.82)'});
   const x = W*0.56, rows = [
-    r.ats.w + r.ats.l ? [`${r.ats.w}-${r.ats.l}${r.ats.p ? '-' + r.ats.p : ''}`, 'LTF side against the spread'] : null,
-    [`${r.w.avg.toFixed(1)}`, `points off per game. The line: ${r.m.avg.toFixed(1)}`],
-    [`${r.s.w}-${r.s.l}`, `this season, ${Math.round(100*r.s.pct)}%. The line: ${Math.round(100*r.sm.pct)}%`],
-  ].filter(Boolean);
+    [`${r.w.avg.toFixed(1)}`, 'points off the final margin, per game'],
+    [`${r.ups}`, `${r.ups === 1 ? 'upset' : 'upsets'}: winners LTF gave under 30%`],
+    [`${r.s.w}-${r.s.l}`, `this season, ${Math.round(100*r.s.pct)}%`],
+  ];
   rows.forEach(([big, small], i) => { const y = 88 + i*132;
     c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(x, y - 36, W - P - x, 2);
     cText(c, big, x, y + 44, {px:76, wt:900, it:true, w:'condensed', color:'#fff'});
     cText(c, small, x, y + 80, {px:24, wt:500, color:'rgba(255,255,255,.86)', max:W - P - x}); });
-  cFoot(c, W, H, foot, `Games with a betting line, ${M.season}`);
+  cFoot(c, W, H, foot, `Every game between FBS teams, ${M.season}`);
 }
 
 /* ---------- draw any card ---------- */
@@ -295,6 +315,7 @@ const CARDS = {
   polls:      {shape:'wide', get: () => pollGaps(), draw: cardPolls, name: () => 'LTF vs the AP poll'},
   conferences:{shape:'wide', get: () => true, draw: cardConferences, name: () => 'Conference power rankings'},
   receipts:   {shape:'wide', get: id => receipts(id), draw: cardReceipts, name: r => `LTF picks, week ${r.week}`},
+  buysell:    {shape:'wide', get: () => buySellCard(), draw: cardBuySell, name: () => 'Buying and selling'},
 };
 async function drawCard(kind, id, shape){   // returns a canvas, or null if there is no such card
   const k = CARDS[kind], what = k && k.get(id); if (!what) return null;
@@ -360,7 +381,7 @@ function sheetClick(b){   // a button inside the panel
 /* ---------- pictures for link previews ---------- */
 /* During the daily update a browser opens the site with #!cards=team/alabama,game/123,... after the address. Instead of
    drawing a page, the site draws those cards and leaves them in the document for the update to collect. */
-const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', '']};
+const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', ''], 'list/buysell': ['buysell', '']};
 async function exportCards(list){
   const out = {};
   for (const name of list){

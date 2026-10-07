@@ -55,7 +55,7 @@ def check_page(site):
     if app is not None and "function render()" not in app:
         bad("app.js is cut off or is not the site's code")
     for name in ("404.html", "og.png", "favicon.png", "apple-touch-icon.png", "fonts/archivo-latin-wdth-normal.woff2", "fonts/archivo-latin-wdth-italic.woff2",
-                 "rankings/index.html", "picks/index.html", "scorecard/index.html"):
+                 "rankings/index.html", "picks/index.html", "scorecard/index.html", "upsets/index.html", "buysell/index.html", "leagues/index.html", "inputs/index.html"):
         if not os.path.exists(os.path.join(site, name)):
             bad(f"{name} is missing from the site folder")
     d = one_line(data, "const D = ", "data.js") if data else None
@@ -79,7 +79,7 @@ def check_data(d):
         bad(f"the week number is {m.get('through')!r}")
     for t in teams:
         z = t.get("z", {})
-        if any(not isinstance(z.get(k), (int, float)) or not math.isfinite(z[k]) for k in ("res", "off", "def", "cmp")):
+        if any(not isinstance(z.get(k), (int, float)) or not math.isfinite(z[k]) for k in m.get("wt", {"res": 0})):
             bad(f"{t.get('n')} has a missing or broken score part")
             break
     if len({t.get("n") for t in teams}) != len(teams):
@@ -87,8 +87,10 @@ def check_data(d):
     last = [t for t in teams if not any(h.get("w") == m.get("through") for h in t.get("h", []))]
     if last:
         bad(f"{len(last)} teams have no entry for week {m.get('through')}, for example {last[0].get('n')}")
+    if set(m.get("wt", {})) != {"res", "off", "def", "mar", "h1"}:
+        bad(f"the index's parts are {sorted(m.get('wt', {}))}, not the five it is built from")
     if not m.get("api"):
-        notes.append("no betting lines or outside ratings in this build")
+        notes.append("no AP poll, SP+, FPI or closing lines in this build, so the comparisons on the scorecard will be empty")
     ids = [q.get("id") for q in d.get("picks", [])]
     if len(ids) != len(set(ids)):
         bad("a game is on file twice")
@@ -104,12 +106,8 @@ def from_page(path):
     if len(hits) != 1:
         return None
     d = json.loads(hits[0][len("const D = "):].rstrip().rstrip(";").replace("<\\/", "</"))
-    cmp_ = {}
-    for t in d.get("teams", []):
-        for h in t.get("h", []):
-            if h.get("c") is not None:
-                cmp_.setdefault(str(h["w"]), {})[t["n"]] = h["c"]
-    return {"season": d["meta"].get("season"), "through": d["meta"].get("through", 0), "picks": d.get("picks", []), "cmp": cmp_,
+    return {"season": d["meta"].get("season"), "through": d["meta"].get("through", 0), "picks": d.get("picks", []),
+            "calls": [c for c in d.get("calls", []) if not c.get("rb")],
             "finals": sum(1 for g in d.get("games", []) if g.get("hp") is not None)}
 
 
@@ -118,15 +116,33 @@ def on_file(season, ledger, live):
     srcs = [s for s in (live, ledger) if s and s.get("season") == season]      # the ledger is applied last, so it wins
     if not srcs:
         return None
-    out = {"season": season, "through": max(s.get("through", 0) for s in srcs), "finals": max(s.get("finals", 0) for s in srcs), "picks": [], "cmp": {}}
+    out = {"season": season, "through": max(s.get("through", 0) for s in srcs), "finals": max(s.get("finals", 0) for s in srcs), "picks": []}
     picks = {}
     for s in srcs:
         for q in s.get("picks", []):
-            picks[q["id"]] = {**picks.get(q["id"], {}), **q}
-        for w, row in s.get("cmp", {}).items():
-            out["cmp"].setdefault(w, {}).update(row)
+            picks[q["id"]] = merge_pick(picks[q["id"]], q) if q["id"] in picks else dict(q)
     out["picks"] = list(picks.values())
+    calls = {}
+    for s in srcs:
+        for c in s.get("calls", []):
+            if not c.get("rb"):
+                calls[(c["w"], c["t"])] = c
+    out["calls"] = list(calls.values())
     return out
+
+
+# Betting lines and the retired model's numbers sat beside a number on file before October 7, 2026. They are no longer
+# kept, so their going missing is not a change.
+RETIRED_KEYS = ("mm", "mt", "ho", "hs", "oo", "ou", "tb", "v")
+
+
+def merge_pick(a, b):
+    """One game's entry from two copies, b applied over a. Made under different versions of the formula, the newer is kept whole."""
+    fa, fb = a.get("f", 1), b.get("f", 1)
+    if fa != fb:
+        hi, lo = (a, b) if fa > fb else (b, a)
+        return {**{k: v for k, v in lo.items() if k in ("sp", "fp", "sa")}, **hi}
+    return {**a, **b}
 
 
 def check_ledger(d, before):
@@ -140,28 +156,53 @@ def check_ledger(d, before):
     game = {g["id"]: g for g in d["games"]}
     built = datetime.strptime(m["builtAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     kicked = lambda gid: datetime.fromisoformat(game[gid]["d"].replace("Z", "+00:00")) <= built
+    formula = m.get("formula", 1)
     for q in before.get("picks", []):
         n = new.get(q["id"])
         if n is None:
             bad(f"a pick that was on file is gone (game {q['id']}, week {q['w']})")
             continue
+        q = {k: v for k, v in q.items() if k not in RETIRED_KEYS}
+        started = game[q["id"]].get("hp") is not None or kicked(q["id"]) if q["id"] in game else True
+        if q.get("f", 1) != n.get("f", 1):
+            # The one change allowed to a number on file: made under an earlier version of the formula, it is refiled under
+            # today's while the game is still unplayed, and the earlier number is kept in the entry.
+            if started:
+                bad(f"a number on file was refiled after kickoff (game {q['id']})")
+            elif n.get("f", 1) != formula or q.get("f", 1) > formula:
+                bad(f"a number on file changed formula in a way that is not a refile (game {q['id']})")
+            elif q.get("lm") is not None and (not n.get("was") or {k: n["was"][-1].get(k) for k in ("f", "lm", "at")} != {"f": q.get("f", 1), "lm": q["lm"], "at": q.get("at")}):
+                bad(f"a refiled number did not keep the earlier one (game {q['id']})")
+            else:
+                moved = [k for k, v in q.items() if k not in ("lm", "at", "f", "was", "rf") and n.get(k) != v]
+                if moved:
+                    bad(f"a number on file changed (game {q['id']}: {', '.join(moved)})")
+            continue
         changed = [k for k, v in q.items() if n.get(k) != v]
         if changed:
             bad(f"a number on file changed (game {q['id']}: {', '.join(changed)})")
         added = [k for k in n if k not in q]
-        if added and (game[q["id"]].get("hp") is not None or kicked(q["id"])):
+        if added and started:
             bad(f"a number was added after kickoff (game {q['id']}: {', '.join(added)})")
     old_ids = {q["id"] for q in before.get("picks", [])}
     for gid, n in new.items():
         if gid not in old_ids and gid in game and (game[gid].get("hp") is not None or kicked(gid)):
             bad(f"a pick went on file after kickoff (game {gid})")
-    hist = {(t["n"], h["w"]): h.get("c") for t in d["teams"] for h in t.get("h", [])}
-    for w, row in before.get("cmp", {}).items():
-        if int(w) >= m["through"]:
-            continue                      # the current week's ratings are still moving
-        diff = [t for t, c in row.items() if (t, int(w)) in hist and hist[(t, int(w))] != c]
-        if diff:
-            bad(f"saved computer ratings for week {w} changed for {len(diff)} teams")
+    # Buying and selling: a call on file never changes, and none goes on file once the team's next game has kicked off.
+    # Calls marked "rb" were rebuilt and are not on file, so they are free to change.
+    calls = {(c["w"], c["t"]): c for c in d.get("calls", []) if not c.get("rb")}
+    was = {(c["w"], c["t"]): c for c in before.get("calls", [])}
+    for key, c in was.items():
+        if key not in calls:
+            bad(f"a buy or sell call that was on file is gone ({c['t']}, after week {c['w']})")
+        elif calls[key] != c:
+            bad(f"a buy or sell call on file changed ({c['t']}, after week {c['w']})")
+    for key, c in calls.items():
+        first = c["g"][0][0] if c.get("g") else None
+        if first not in game:
+            bad(f"a buy or sell call names a game that is not on the schedule ({c['t']}, after week {c['w']})")
+        elif key not in was and (game[first].get("hp") is not None or kicked(first)):
+            bad(f"a buy or sell call went on file after kickoff ({c['t']}, after week {c['w']})")
 
 
 def find_browser():
@@ -192,8 +233,8 @@ def check_render(site, d):
     m, teams, games = d["meta"], d["teams"], d["games"]
     plain = [t["n"] for t in teams if re.fullmatch(r"[A-Za-z ]+", t["n"])]      # names whose page address is easy to predict
     slug = lambda s: s.lower().replace(" ", "-")
-    routes = ["", "rankings", "games", "picks", "spread", "scorecard", "track", "model", "playoff", "odds", "momentum", "recap",
-              "stats", "conferences", "how"] + ["team/" + slug(n) for n in plain[:1] + plain[-1:]]
+    routes = ["", "rankings", "weights", "games", "picks", "upsets", "buysell", "scorecard", "track", "inputs", "playoff", "odds", "momentum", "recap",
+              "stats", "conferences", "leagues", "radar", "luck", "how"] + ["team/" + slug(n) for n in plain[:1] + plain[-1:]]
     done = [g for g in games if g.get("hp") is not None]
     todo = [g for g in games if g.get("hp") is None and g["w"] == m.get("next")]
     routes += [f"game/{g['id']}" for g in (done[-1:] + todo[:1])]

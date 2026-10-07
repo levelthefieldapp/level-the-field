@@ -10,13 +10,18 @@ const SITE = null;
 const ROOT = (() => { try { const s = document.currentScript && document.currentScript.src; return s ? new URL('.', s).pathname : ''; } catch(e){ return ''; } })();
 const PATHS = !!SITE && !!SITE.paths && !!ROOT && location.protocol !== 'file:';
 const CONTACT_EMAIL = '';            // put a public contact address here to switch on the Contact page's email link
+/* The five parts of the LTF Index. Every one is built from this season's games and nothing else. The weights come from
+   the data build, so the page and the numbers cannot drift apart. */
+const WT = D.meta.wt || {res:20, off:25, def:25, mar:20, h1:10};
 const COMP = [
-  {k:'res', name:'Résumé',           col:'Résumé',  w:20, what:'Who a team has beaten and lost to: strength of record, quality wins and scoring margin.'},
-  {k:'off', name:'Offense',          col:'Offense', w:25, what:'How well the offense moves the ball and scores: EPA per play, success rate, points per drive, scoring opportunities, explosive plays and yards.'},
-  {k:'def', name:'Defense',          col:'Defense', w:25, what:'How well the defense prevents the same things, plus stop rate and havoc.'},
-  {k:'cmp', name:'Computer ratings', col:'Ratings', w:30, what:'Other rating systems, averaged: ' + D.meta.cmpSrc.join(', ') + '.'},
+  {k:'res', name:'Résumé',         col:'Résumé',   w:WT.res, what:'Who a team has beaten and lost to: strength of record, quality wins and scoring margin.'},
+  {k:'off', name:'Offense',        col:'Offense',  w:WT.off, what:'How well the offense moves the ball and scores: EPA per play, success rate, points per drive, scoring opportunities, explosive plays and yards.'},
+  {k:'def', name:'Defense',        col:'Defense',  w:WT.def, what:'How well the defense prevents the same things, plus stop rate and havoc.'},
+  {k:'mar', name:'Scoring margin', col:'Margin',   w:WT.mar, what:'Points a game better than an average team, after allowing for the opponent and home field. A blowout counts for no more than 24.'},
+  {k:'h1',  name:'First half',     col:'1st half', w:WT.h1,  what:'The same thing at halftime, in games between FBS teams. A lead built before the game is decided says more than points scored after it.'},
 ];
 const pct1 = v => v.toFixed(1) + '%';
+const f1 = v => (+v).toFixed(1);                           // a tested number, always with one decimal so columns line up
 const STATS = [   // o = offense field, d = defense field; dHigh marks defense stats where higher is better
   {k:'epa',  n:'EPA per play',                   s:'EPA/play',        o:'oepa', d:'depa', f:v => signed(v,3)},
   {k:'sr',   n:'Success rate',                   s:'Success',         o:'osr',  d:'dsr',  f:pct1},
@@ -40,7 +45,6 @@ const sdev = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v-m)*(v
 const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
 const ord = n => { const s=['th','st','nd','rd'], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); };
 const signed = (v,d=1) => (v>0?'+':v<0?'\u2212':'') + Math.abs(v).toFixed(d).replace(/\.0$/,'');
-const line = v => v === 0 ? "Pick 'em" : signed(v);
 const half = v => Math.round(Math.abs(v)*2)/2;
 const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/['\u2019]/g,'').toLowerCase().replace(/&/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const list = xs => xs.length < 2 ? xs.join('') : xs.slice(0,-1).join(', ') + ' and ' + xs[xs.length-1];
@@ -92,7 +96,7 @@ for (const g of G){
     const t = byName[g[side]]; if (!t) continue;
     const home = side==='h', opp = home ? g.a : g.h;
     const e = {game:g, id:g.id, wk:g.w, opp, fcs:!byName[opp], site:g.n ? 'N' : home ? 'H' : 'A', conf:g.c, date:g.d,
-               pf:g.done ? (home?g.hp:g.ap) : null, pa:g.done ? (home?g.ap:g.hp) : null, spr:g.hs == null ? null : (home ? g.hs : -g.hs), ou:g.ou};
+               pf:g.done ? (home?g.hp:g.ap) : null, pa:g.done ? (home?g.ap:g.hp) : null};
     t.sched.push(e); if (g.done) t.g.push(e);
   }
 }
@@ -107,28 +111,11 @@ T.forEach(t => { t.netOpp = t.d.oppo - t.d.dppo; });
 for (const s of STATS) for (const f of [s.o, s.d]) if (f){ AVG[f] = mean(T.map(t => t.d[f])); SD[f] = sdev(T.map(t => t.d[f])) || 1; }
 AVG.netOpp = 0; SD.netOpp = sdev(T.map(t => t.netOpp)) || 1;
 rankBy('netOpp', t => t.netOpp); rankBy('st', t => t.d.st);
-rankBy('sor', t => t.d.sor); rankBy('mar', t => t.d.mar); rankBy('sos', t => t.d.sos);
-const SRC = [['SP+','sp'],['FPI','fpi'],['SRS','srs'],['Elo','elo']].filter(([n,f]) => T.every(t => t.d[f] != null));
-SRC.forEach(([n,f]) => rankBy(f, t => t.d[f]));
-for (const t of T){   // records against the spread
-  const mk = () => ({w:0,l:0,p:0,sum:0,n:0});
-  const a = {all:mk(),fav:mk(),dog:mk(),home:mk(),away:mk(),o:0,u:0,op:0};
-  for (const g of t.g){
-    if (g.spr == null) continue;
-    const cm = g.pf - g.pa + g.spr; g.cm = cm;
-    const add = o => { o.n++; o.sum += cm; if (cm>0) o.w++; else if (cm<0) o.l++; else o.p++; };
-    add(a.all); if (g.spr<0) add(a.fav); else if (g.spr>0) add(a.dog);
-    add(g.site==='H' ? a.home : a.away);
-    if (g.ou != null){ const tot = g.pf+g.pa; if (tot>g.ou) a.o++; else if (tot<g.ou) a.u++; else a.op++; }
-  }
-  a.pct = (a.all.w+a.all.l) ? a.all.w/(a.all.w+a.all.l) : null;
-  a.avg = a.all.n ? a.all.sum/a.all.n : null;
-  t.ats = a;
-}
+rankBy('sor', t => t.d.sor); rankBy('sos', t => t.d.sos);
 const finalTxt = g => g.hp >= g.ap ? `${esc(g.h)} ${g.hp}, ${esc(g.a)} ${g.ap}` : `${esc(g.a)} ${g.ap}, ${esc(g.h)} ${g.hp}`;      // a final the way it is written up: winner first
 const anA = n => /^(8|11(\D|$)|18(\D|$))/.test(String(n)) ? 'an' : 'a';      // "an 8-point favorite", "an 11.5-point underdog", "a 10-point favorite"
+const aPct = v => `${anA(v)} ${v}%`;      // "a 41% chance", "an 11% chance", "an 80% chance"
 const scoreTxt = e => `${Math.max(e.pf, e.pa)}-${Math.min(e.pf, e.pa)}`;      // a final score the way it is always written, winner's points first
-const recStr = o => o.n ? `${o.w}-${o.l}${o.p?'-'+o.p:''}` : '\u2013';
 
 /* ================= weights and the index ================= */
 const DEFAULTS = Object.fromEntries(COMP.map(c => [c.k, c.w]));
@@ -151,7 +138,8 @@ function compositeZ(w){
 { const r = ranks(compositeZ(DEFAULTS)); T.forEach((t,i)=>{ t.baseRank = r[i]; }); }
 const HW = [...new Set(T.flatMap(t => t.h.map(h => h.w)))].sort((a,b) => a-b);     // weeks with a saved snapshot
 let WK = {}, _sim = {};
-const slopeAt = wk => M.slope[String(clamp(wk, 2, 11))];                             // index points per standard deviation
+const SLOPE_WKS = Object.keys(M.slope).map(Number);
+const slopeAt = wk => M.slope[String(clamp(wk, Math.min(...SLOPE_WKS), Math.max(...SLOPE_WKS)))];      // points per standard deviation of the index
 const SLOPE = slopeAt(M.through);
 const FCS = {cz: M.fcs / SLOPE, fcsTeam: true};                                      // stand-in for any FCS opponent
 function recompute(){
@@ -162,8 +150,7 @@ function recompute(){
   for (const wk of HW){   // the same score for every earlier week, so movement, trends and old lines follow the weights
     const cur = wk === M.through;
     const rows = T.map(t => [t, cur ? t : t.h.find(h => h.w===wk)]).filter(x => x[1]);
-    const cmpAt = (t,h) => h.c ?? (t.z.cmp + h.e - (t.h.find(x => x.w===M.through) || h).e);
-    const parts = rows.map(([t,h]) => cur ? {...t.z} : {res:h.r, off:h.o, def:h.d, cmp:cmpAt(t,h)});
+    const parts = rows.map(([t,h]) => cur ? {...t.z} : {res:h.r, off:h.o, def:h.d, mar:h.m, h1:h.f});
     const raw = parts.map(p => COMP.reduce((s,c)=>s+W[c.k]*p[c.k],0)/tot);
     const m = mean(raw), sd = sdev(raw) || 1, zs = raw.map(v => (v-m)/sd), rk = ranks(zs);
     const prk = Object.fromEntries(COMP.map(c => [c.k, ranks(parts.map(p => p[c.k]))]));
@@ -180,7 +167,7 @@ function recompute(){
   }
   for (const c of CONFS){ c.avg = mean(c.teams.map(t => t.idx)); c.sorted = [...c.teams].sort((a,b) => a.rank-b.rank); }
   [...CONFS].filter(c => c.tier).sort((a,b) => b.avg-a.avg).forEach((c,i) => { c.rank = i+1; });
-  _track = null; _proj = {}; _sim = {}; _mom = null; _sc = null; _brk = null;
+  _track = null; _proj = {}; _sim = {}; _mom = null; _sc = null; _lg = null;
   for (const c of CONFS){ const pv = prevWk != null ? c.teams.filter(t => t.hist[prevWk]).map(t => t.hist[prevWk].idx) : []; c.prevAvg = pv.length ? mean(pv) : null; }
   if (prevWk != null) [...CONFS].filter(c => c.tier && c.prevAvg != null).sort((a,b) => b.prevAvg-a.prevAvg).forEach((c,i) => { c.prevRank = i+1; });
 }
@@ -201,16 +188,16 @@ function gameLine(g){   // the LTF line for a game from the home side. Finished 
   return {m, fav: m>=0 ? h : a, pts: half(m), pHome: phi(m/M.sigma)};
 }
 const FUTURE = () => WEEKS.filter(w => M.next != null && w >= M.next);                 // weeks still to be played
-const weekGames = w => G.filter(g => g.w === w).map(g => { const pr = gameLine(g); return {g, pr, gap: pr && g.hs != null ? pr.m + g.hs : null}; });
+const weekGames = w => G.filter(g => g.w === w).map(g => ({g, pr: gameLine(g)}));
 const openGames = w => weekGames(w).filter(x => !x.g.done);                           // a week's games still to be played
-const lineTxt = (x, ab) => !x ? null : x.pts === 0 ? "Pick 'em" : `${esc(ab ? x.fav.ab : x.fav.n)} ${signed(-x.pts)}`;
-const marketTxt = (g, ab) => { if (g.hs == null) return null; if (g.hs === 0) return "Pick 'em"; const n = g.hs < 0 ? g.h : g.a, t = byName[n]; return `${esc(ab && t ? t.ab : n)} ${signed(-Math.abs(g.hs))}`; };
-function outcome(g){   // what happened against the market
-  const mar = g.hp - g.ap, o = {mar, winner: mar>0 ? g.h : g.a, loser: mar>0 ? g.a : g.h};
-  if (g.hs != null){ const cm = mar + g.hs; o.cover = cm === 0 ? null : cm > 0 ? g.h : g.a; o.coverBy = Math.abs(cm); }
-  if (g.ou != null){ const tot = g.hp + g.ap; o.total = tot; o.ou = tot>g.ou ? 'Over' : tot<g.ou ? 'Under' : 'Push'; }
-  return o;
-}
+/* A line is written the way people say it: "Alabama by 7". Lines are shown to the half point, so a lean of under a quarter
+   of a point reads as a pick 'em. The lean itself is still what gets graded, and callTxt names it. */
+const callTxt = r => `${r.right ? 'Right' : 'Wrong'}${r.x.pts === 0 ? ` <span class="cf">leaned ${esc((r.x.m > 0 ? byName[r.g.h] : byName[r.g.a]).ab)}</span>` : ''}`;
+const lineTxt = (x, ab) => !x ? null : x.pts === 0 ? "Pick 'em" : `${esc(ab ? x.fav.ab : x.fav.n)} by ${x.pts}`;
+/* The betting line, for finished games only. It is never part of the score. It appears on the Track record pages as one
+   more yardstick, written the same way as the LTF line. */
+const bettingTxt = (g, ab) => { if (g.hs == null) return null; if (g.hs === 0) return "Pick 'em"; const n = g.hs < 0 ? g.h : g.a, t = byName[n]; return `${esc(ab && t ? t.ab : n)} by ${Math.abs(g.hs)}`; };
+function outcome(g){ const mar = g.hp - g.ap; return {mar, winner: mar>0 ? g.h : g.a, loser: mar>0 ? g.a : g.h}; }
 const winProb = (t, e) => {   // chance t wins schedule entry e, from the current index
   const o = byName[e.opp] || FCS; return lineFor(t, o, e.site==='H' ? 1 : e.site==='A' ? -1 : 0).pA;
 };
@@ -222,18 +209,19 @@ function projection(t){   // remaining games and the record the index expects
   return _proj[t.n] = {left, xw, w: t.w + xw, l: t.l + left.length - xw};
 }
 let _track = null;
-function trackRecord(){   // every finished game where the index had a line before kickoff and the market did too
+function trackRecord(){   // every finished game where the index had a line before kickoff, graded on the winner and the margin
   if (_track) return _track;
   const rows = [];
   for (const g of G){
-    if (!g.done || g.hs == null) continue;
+    if (!g.done) continue;
     const x = gameLine(g); if (!x) continue;
-    const mi = x.m, mm = -g.hs, act = g.hp - g.ap, edge = mi - mm, res = act - mm;
-    rows.push({g, x, mi, mm, act, side: Math.abs(edge) < 0.25 ? null : edge > 0 ? g.h : g.a,
-               right: res === 0 || Math.abs(edge) < 0.25 ? null : (edge > 0) === (res > 0), ei: Math.abs(act-mi), em: Math.abs(act-mm)});
+    const act = g.hp - g.ap, mm = g.hs == null ? null : -g.hs;
+    rows.push({g, x, mi: x.m, mm, act, right: (x.m > 0) === (act > 0), ei: Math.abs(act - x.m),      // a line that rounds to a pick 'em still leans one way, and the lean is graded
+               mright: mm == null || mm === 0 ? null : (mm > 0) === (act > 0), em: mm == null ? null : Math.abs(act - mm)});
   }
-  const sum = rs => ({n: rs.length, w: rs.filter(r => r.right === true).length, l: rs.filter(r => r.right === false).length, p: rs.filter(r => r.right === null).length,
-                      ai: rs.length ? mean(rs.map(r => r.ei)) : 0, am: rs.length ? mean(rs.map(r => r.em)) : 0});
+  const sum = rs => { const mk = rs.filter(r => r.em != null);
+    return {n: rs.length, w: rs.filter(r => r.right === true).length, l: rs.filter(r => r.right === false).length, ai: rs.length ? mean(rs.map(r => r.ei)) : 0,
+            mn: mk.length, mw: mk.filter(r => r.mright === true).length, ml: mk.filter(r => r.mright === false).length, am: mk.length ? mean(mk.map(r => r.em)) : 0}; };
   const weeks = [...new Set(rows.map(r => r.g.w))].sort((a,b) => a-b).map(wk => ({...sum(rows.filter(r => r.g.w === wk)), wk}));
   return _track = {rows, weeks, all: sum(rows)};
 }

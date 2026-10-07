@@ -1,52 +1,69 @@
 #!/usr/bin/env python3
 """
-College Football Index: data pipeline
-=====================================
+Level the Field: data pipeline
+==============================
 Builds data.json, the snapshot the site reads.
+
+What the LTF Index is made of
+-----------------------------
+This season's games and nothing else. No earlier seasons, no preseason rankings, no polls, no betting
+lines and no other rating systems go into the score.
+
+  resume      20  : strength of record 65, quality wins 20, scoring margin 15
+  offense     25  : EPA/play 30, success rate 25, points/drive 20, points/scoring opp 10,
+                    explosive plays 10, yards/game 5
+  defense     25  : EPA/play 25, success rate 20, points/drive 20, stop rate 10,
+                    points/scoring opp 10, explosive plays 5, havoc 5, yards/game 5
+  margin      20  : final scoring margin, adjusted for opponent and home field
+  first half  10  : scoring margin at halftime, adjusted the same way
+
+Two rules shape every opponent-adjusted number above (offense, defense and both margins):
+
+  1. Every game counts. A game against a lower-division team is kept, with all such teams treated as
+     one pooled opponent whose strength is worked out from this season's games. The one exception is
+     the first-half part, which uses games between FBS teams only, because a halftime lead over a
+     lower-division team says little.
+  2. League strength, in two levels. A team's number is the level of its tier (the four power leagues
+     and Notre Dame, or everyone else), plus the level of its league, plus its own difference. The gap
+     between the two tiers is held loosely, so this season's games between them set it. One league's
+     level against another's in the same tier is held very firmly, so a league only gets credit over
+     another when this season's games between them clearly call for it.
 
 Where the data comes from
 -------------------------
-The public sportsdataverse / cfbfastR data repositories on GitHub. These are
-open mirrors built from the CollegeFootballData.com (CFBD) API and ESPN's
-play-by-play feed, refreshed during the season:
+The public sportsdataverse / cfbfastR data repositories on GitHub. These are open mirrors built from
+the CollegeFootballData.com (CFBD) API and ESPN's play-by-play feed, refreshed during the season:
 
-  schedule + scores + Elo : sportsdataverse/cfbfastR-data  schedules/csv/cfb_schedules_<season>.csv
-  play-by-play + lines    : sportsdataverse/sportsdataverse-data  release cfbfastR_cfb_pbp
-  team colors             : sportsdataverse/cfbfastR-data  teams/teams_colors_logos.csv
+  schedule + scores : sportsdataverse/cfbfastR-data  schedules/csv/cfb_schedules_<season>.csv
+  play-by-play      : sportsdataverse/sportsdataverse-data  release cfbfastR_cfb_pbp
+  team colors       : sportsdataverse/cfbfastR-data  teams/teams_colors_logos.csv
 
-Not in those mirrors: SP+, FPI, SRS, and lines for games not yet played. Those
-come from the CollegeFootballData.com API. pull_api.py fetches them and saves
-raw/cfb_api.json, and this script picks that file up:
+pull_api.py also fetches three things from the CollegeFootballData.com API into raw/cfb_api.json.
+None of them is part of the score. They are shown next to it, for comparison:
 
-  computer ratings : average of SP+, FPI, SRS and Elo
-  upcoming games   : current market spread and total
+  AP poll           : on the Under the radar page
+  SP+ and FPI       : graded next to LTF on the scorecard
+  betting line      : graded next to LTF on the scorecard, as one more yardstick
 
-Without that file the index still builds, with Elo alone for computer ratings.
-Polls are not used.
-
-The score has four parts, each a slider on the site:
-  resume   : strength of record 65, quality wins 20, margin 15
-  offense  : EPA/play 30, success rate 25, points/drive 20, points/scoring opp 10,
-             explosive plays 10, yards/game 5
-  defense  : EPA/play 25, success rate 20, points/drive 20, stop rate 10,
-             points/scoring opp 10, explosive plays 5, havoc 5, yards/game 5
-  computer : SP+, FPI, SRS, Elo
+Without that file the index builds exactly the same. Only the comparisons go missing.
 
 Needs: pandas, numpy, pyarrow.
 
 Run:  python3 build_data.py                    downloads what is missing into ./raw, writes data.json
       python3 build_data.py --refresh          re-download everything first (the daily update does this)
-      python3 build_data.py --prev old.html    also read picks and weekly ratings out of an older copy of the site
+      python3 build_data.py --prev old.html    also read picks out of an older copy of the site
 
-What carries over from one run to the next lives in ledger.json: every pick and scorecard number put on
-file before kickoff, and the computer-ratings part as it stood each week. Each run reads the ledger, adds
-to it, and never changes what is already there. make_site.py then turns data.json into the site.
+What carries over from one run to the next lives in ledger.json: every LTF number put on file before
+kickoff, with the SP+ and FPI numbers for the same game. Each run reads the ledger, adds to it, and never
+changes a number once the game has kicked off. One thing can change before kickoff: a number filed under an
+earlier version of the formula is refiled under today's, with the earlier number kept beside it, so every game is
+graded on the formula in use. make_site.py then turns data.json into the site.
 
 When the week turns over
 ------------------------
-Scores, lines and picks refresh on every run. The index itself moves once a week: a week counts when
-nearly all of its games are final and their play-by-play has arrived (see week_in_books). A Tuesday or
-Thursday result shows on the site at once and joins the ratings when the rest of the week is in.
+Scores and picks refresh on every run. The index itself moves once a week: a week counts when nearly all
+of its games are final and their play-by-play has arrived (see week_in_books). A Tuesday or Thursday
+result shows on the site at once and joins the ratings when the rest of the week is in.
 """
 import json, math, os, sys, re, datetime, urllib.request
 import numpy as np
@@ -55,8 +72,8 @@ import pandas as pd
 SEASON = 2026
 RAW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-# The ledger is the site's memory: every pick and scorecard number put on file before kickoff, and the
-# computer-ratings part as it stood each week. Each run reads it, adds to it and never rewrites what is there.
+# The ledger is the site's memory: every LTF number put on file before kickoff, with the SP+ and FPI numbers for the
+# same game. Each run reads it, adds to it and never rewrites what is there.
 LEDGER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ledger.json")
 
 
@@ -76,7 +93,20 @@ SIGMA = 16.0         # std dev of a game result around its expected margin
 MARGIN_CAP = 24      # blowouts count for no more than this
 FCS_RATING = -20.0   # every FCS opponent is treated as 20 points below an average FBS team
 ALPHA_PLAY = 2.5     # ridge strength for per-play efficiency numbers
-ALPHA_MARGIN = 1.5   # ridge strength for scoring margin
+ALPHA_MARGIN = 1.5   # ridge strength for scoring margin, full game and first half
+ALPHA_TIER = 0.3     # how firmly the gap between the power leagues and everyone else is held. Loosely: this season's games set it.
+ALPHA_LEAGUE = 40.0  # how firmly one league is held level with the others in its tier. Very: only a clear record between them moves it.
+H1_CAP = None        # a cap on halftime leads. None: a first-half lead counts in full. (A cap of 24 tested no better.)
+H1_FBS_ONLY = True   # The first-half part uses games between FBS teams only: a halftime lead over a lower-division team says
+H1_LEAGUES = True    # little. League strength is on, as in the other parts. Both were compared in research/bt_variants.py.
+POOL = "~lower division"     # every lower-division opponent, treated as one pooled team
+# The LTF Index: the share each part gets. Changed October 7, 2026 to use this season only. Until then the parts were
+# résumé 20, offense 25, defense 25 and computer ratings 30 (SP+, FPI, SRS and Elo, which all carry earlier seasons).
+WEIGHTS = {"res": 20, "off": 25, "def": 25, "mar": 20, "h1": 10}
+FORMULA = 2          # the version of the formula a number on file was made with. 1 was the formula before October 7, 2026.
+# Fields that sat beside a number on file before October 7, 2026: betting lines and totals, and the retired prediction
+# model's numbers. The site is out of betting and shows no line for a game still to be played, so these are no longer kept.
+RETIRED_KEYS = ("mm", "mt", "ho", "hs", "oo", "ou", "tb", "v")
 GARBAGE = {1: 43, 2: 37, 3: 27, 4: 21}
 
 # The résumé recipe: the share each piece gets. Until October 6, 2026 it was strength of record 40, quality wins 20,
@@ -84,24 +114,30 @@ GARBAGE = {1: 43, 2: 37, 3: 27, 4: 21}
 # (research/resume_study.py): the losses piece was the win-loss record over again, and schedule strength was being
 # counted twice, since strength of record already allows for who a team has played. Accuracy was unchanged.
 RESUME = {"sor": 0.65, "qw": 0.20, "mar": 0.15}
-# Points per one standard deviation of the index, by week of the season. Fitted on 2021-2025:
-# the index frozen after week W against every later regular-season game (see the backtest).
-# How the index's picks did on the next week's games across five past seasons (see the backtest).
-# "cal" compares the win chance the index gave with how often that side won. "ats" is how often the index's side
-# covered, by the size of its disagreement with the market. "gw" is how far one unexpected result moves a team's score,
-# by the week of the game: a lot in September, about half as much by November. "w6" is the weights test on the How it works
-# page. All of it comes from research/backtest_site.py, which has to be re-run whenever the index formula changes.
-BACKTEST = {"seasons": "2021 to 2025", "games": 2491, "su": 71.5, "mktSu": 72.8, "miss": 12.5, "mktMiss": 12.0, "atsN": 2449, "atsAll": 51.1, "cal": [{"lo": 50, "hi": 55, "n": 355, "pred": 52.6, "act": 57.5}, {"lo": 55, "hi": 60, "n": 313, "pred": 57.5, "act": 57.8}, {"lo": 60, "hi": 65, "n": 351, "pred": 62.5, "act": 60.7}, {"lo": 65, "hi": 70, "n": 323, "pred": 67.4, "act": 71.8}, {"lo": 70, "hi": 75, "n": 253, "pred": 72.5, "act": 73.9}, {"lo": 75, "hi": 80, "n": 257, "pred": 77.6, "act": 77.0}, {"lo": 80, "hi": 85, "n": 256, "pred": 82.5, "act": 85.9}, {"lo": 85, "hi": 90, "n": 160, "pred": 87.5, "act": 84.4}, {"lo": 90, "hi": 95, "n": 141, "pred": 92.4, "act": 91.5}, {"lo": 95, "hi": 100, "n": 82, "pred": 97.0, "act": 98.8}], "conf": [{"lo": 50, "hi": 60, "label": "Toss-up", "n": 668, "act": 57.6}, {"lo": 60, "hi": 75, "label": "Lean", "n": 927, "act": 68.2}, {"lo": 75, "hi": 90, "label": "Likely", "n": 673, "act": 82.2}, {"lo": 90, "hi": 100, "label": "Very likely", "n": 223, "act": 94.2}], "ats": [{"lo": 0, "hi": 4, "label": "No real lean", "n": 1605, "hit": 50.3}, {"lo": 4, "hi": 8, "label": "Slight lean", "n": 620, "hit": 52.6}, {"lo": 8, "hi": 100, "label": "Stronger lean", "n": 224, "hit": 52.7}], "gw": {"4": 0.567, "5": 0.445, "6": 0.413, "7": 0.378, "8": 0.344, "9": 0.301, "10": 0.28, "11": 0.254}, "gamma": 0.254, "w6": {"games": 2177, "rows": [{"lab": "Résumé only", "miss": 14.0, "su": 65.8}, {"lab": "60 / 15 / 15 / 10", "miss": 13.5, "su": 68.0}, {"lab": "30 / 30 / 30 / 10", "miss": 13.2, "su": 69.7}, {"lab": "20 / 25 / 25 / 30, the LTF Index", "miss": 13.1, "su": 70.8}, {"lab": "Best fit the data could find, 10 / 25 / 20 / 45", "miss": 13.0, "su": 70.9}, {"lab": "Betting line, for comparison", "miss": 12.3, "su": 71.9}]}}
-# What makes a pick more or less reliable, from the same five seasons (research/conf_study.py).
-# "cf" turns the LTF line and the market line into the chance the LTF pick wins: 1 / (1 + exp(-(b0 + bm*ltf + bk*market))),
-# with both lines measured in points toward the LTF pick. "mk" is how the pick did when the market agreed or disagreed
-# on the winner. "hz" is how picks held up by how far ahead they were made. "steady" is favorites whose level swings least.
-CONFIDENCE = {"cf": {"b0": 0.0775, "bm": 0.0084, "bk": 0.0976},
-              "mk": {"agree": {"n": 2197, "pred": 72.0, "act": 74.9}, "split": {"n": 252, "pred": 56.9, "act": 43.7}},
-              "hz": [{"lab": "next week", "lo": 1, "hi": 1, "n": 2451, "act": 71.6}, {"lab": "two or three weeks out", "lo": 2, "hi": 3, "n": 4856, "act": 71.1}, {"lab": "four to six weeks out", "lo": 4, "hi": 6, "n": 5608, "act": 69.9}, {"lab": "seven or more weeks out", "lo": 7, "hi": 99, "n": 3914, "act": 68.5}],
-              "steady": {"n": 733, "pred": 70.9, "act": 74.2},
-              "cal": [{"lo": 0, "hi": 40, "n": 44, "conf": 35.6, "act": 29.5}, {"lo": 40, "hi": 50, "n": 195, "conf": 46.1, "act": 48.2}, {"lo": 50, "hi": 60, "n": 288, "conf": 57.5, "act": 56.2}, {"lo": 60, "hi": 70, "n": 655, "conf": 64.9, "act": 64.9}, {"lo": 70, "hi": 80, "n": 468, "conf": 75.0, "act": 75.0}, {"lo": 80, "hi": 90, "n": 478, "conf": 84.6, "act": 86.0}, {"lo": 90, "hi": 100, "n": 323, "conf": 93.8, "act": 92.6}]}
-SLOPE = {2: 8.13, 3: 8.13, 4: 8.53, 5: 8.9, 6: 9.18, 7: 9.49, 8: 9.74, 9: 9.92, 10: 10.33, 11: 10.57}   # points per standard deviation of the index, by week
+# ---- what past seasons say ----------------------------------------------------------------------------------------
+# Everything from here to the end of this block comes out of research/backtest_site.py, which rebuilds the index week by
+# week for twelve past seasons with the code in this file. It has to be re-run whenever the formula changes, and its
+# output pasted here. No number in this block feeds the rankings. SLOPE turns a gap in the index into points for the
+# LTF line, and the rest is what the site quotes about its own record.
+#
+# SLOPE: points per one standard deviation of the index, by week of the season: the index frozen after week W against
+#   every later regular-season game.
+# BACKTEST: how the index's picks did on the next week's games. "cal" compares the win chance the index gave with how
+#   often that side won. "dog" is the same from the underdog's side, for the upset watch. "gw" is how far one unexpected
+#   result moves a team's score, by the week of the game: a lot in September, about half as much by November. "w6" is
+#   the weights test on the How it works page. "mkt" numbers are the betting line on the same games, as a yardstick.
+# CONFIDENCE: "hz" is how picks held up by how far ahead they were made. "steady" is favorites whose level swings least.
+# MOMENTUM: whether a hot or cold stretch says anything the index does not already know.
+# LEAGUE_CHECK: in games between two different power leagues, how far each league's teams beat or fell short of the
+#   LTF line, and how far the line fell short when a power team played a team from another league.
+#<<backtest
+SLOPE = {2: 8.5, 3: 9.56, 4: 9.95, 5: 10.45, 6: 10.83, 7: 11.38, 8: 11.61, 9: 11.95, 10: 12.07, 11: 12.13, 12: 12.53}
+BACKTEST = {"seasons": "2014 to 2025", "n": 12, "games": 7452, "su": 72.3, "miss": 13.1, "mktGames": 7450, "mktSu": 74.2, "mktMiss": 12.3, "ltfOnMkt": 72.3, "ltfMissOnMkt": 13.1, "cal": [{"lo": 50, "hi": 55, "n": 968, "pred": 52.4, "act": 53.1}, {"lo": 55, "hi": 60, "n": 961, "pred": 57.4, "act": 55.9}, {"lo": 60, "hi": 65, "n": 965, "pred": 62.4, "act": 66.4}, {"lo": 65, "hi": 70, "n": 886, "pred": 67.4, "act": 69.9}, {"lo": 70, "hi": 75, "n": 774, "pred": 72.4, "act": 74.5}, {"lo": 75, "hi": 80, "n": 767, "pred": 77.5, "act": 80.2}, {"lo": 80, "hi": 85, "n": 752, "pred": 82.4, "act": 82.0}, {"lo": 85, "hi": 90, "n": 564, "pred": 87.4, "act": 87.1}, {"lo": 90, "hi": 95, "n": 507, "pred": 92.3, "act": 94.1}, {"lo": 95, "hi": 100, "n": 308, "pred": 97.0, "act": 96.4}], "conf": [{"lo": 50, "hi": 60, "label": "Toss-up", "n": 1929, "act": 54.5}, {"lo": 60, "hi": 75, "label": "Lean", "n": 2625, "act": 70.0}, {"lo": 75, "hi": 90, "label": "Likely", "n": 2083, "act": 82.7}, {"lo": 90, "hi": 100, "label": "Very likely", "n": 815, "act": 95.0}], "dog": [{"lo": 40, "hi": 50, "n": 1929, "pred": 45.1, "act": 45.5}, {"lo": 30, "hi": 40, "n": 1851, "pred": 35.2, "act": 31.9}, {"lo": 20, "hi": 30, "n": 1541, "pred": 25.0, "act": 22.6}, {"lo": 10, "hi": 20, "n": 1316, "pred": 15.5, "act": 15.8}, {"lo": 0, "hi": 10, "n": 815, "pred": 5.9, "act": 5.0}], "byWeek": [{"lab": "Weeks 3 and 4", "n": 1135, "su": 72.7, "miss": 14.0, "mktSu": 78.0, "mktMiss": 12.2}, {"lab": "Weeks 5 to 7", "n": 1854, "su": 68.9, "miss": 13.0, "mktSu": 73.2, "mktMiss": 12.1}, {"lab": "Weeks 8 to 10", "n": 1923, "su": 72.7, "miss": 13.0, "mktSu": 73.0, "mktMiss": 12.5}, {"lab": "Weeks 11 to 13", "n": 2056, "su": 74.4, "miss": 12.8, "mktSu": 74.8, "mktMiss": 12.4}, {"lab": "Weeks 14 and 15", "n": 484, "su": 73.1, "miss": 12.6, "mktSu": 71.1, "mktMiss": 12.4}], "bySeason": {"best": 76.1, "worst": 69.7}, "gw": {"3": 0.701, "4": 0.534, "5": 0.466, "6": 0.404, "7": 0.343, "8": 0.313, "9": 0.287, "10": 0.261, "11": 0.231, "12": 0.219, "13": 0.202, "14": 0.206}, "gamma": 0.206, "w6": {"games": 4968, "rows": [{"lab": "Résumé only", "miss": 14.28, "su": 67.7}, {"lab": "Scoring margin only", "miss": 13.71, "su": 69.9}, {"lab": "Offense and defense only", "miss": 13.52, "su": 70.5}, {"lab": "60 / 10 / 10 / 10 / 10", "miss": 13.83, "su": 69.2}, {"lab": "Even, 20 each", "miss": 13.52, "su": 70.7}, {"lab": "20 / 25 / 25 / 20 / 10, the LTF Index", "miss": 13.49, "su": 70.7}, {"lab": "Best fit the data could find, 10 / 40 / 30 / 10 / 10", "miss": 13.45, "su": 70.6}, {"lab": "Betting line, for comparison", "miss": 12.41, "su": 73.4}]}, "was": {"games": 7452, "su": 72.4, "miss": 13.0, "bare": {"games": 7452, "su": 71.1, "miss": 13.4}}}
+CONFIDENCE = {"hz": [{"lab": "next week", "lo": 1, "hi": 1, "n": 7452, "act": 72.3, "pred": 71.0}, {"lab": "two or three weeks out", "lo": 2, "hi": 3, "n": 13088, "act": 70.5, "pred": 70.2}, {"lab": "four to six weeks out", "lo": 4, "hi": 6, "n": 14824, "act": 69.2, "pred": 69.3}, {"lab": "seven or more weeks out", "lo": 7, "hi": 99, "n": 12408, "act": 67.4, "pred": 67.7}], "steady": {"n": 2076, "pred": 71.0, "act": 72.9}, "updown": {"n": 2076, "pred": 70.8, "act": 71.1}}
+MOMENTUM = {"seasons": "2014 to 2025", "games": 6920, "carry": {"n": 13339, "corr": 0.034, "hot": 51.7, "hotN": 2628, "cold": 48.2, "coldN": 2600}, "fav": {"hot": {"n": 1384, "pred": 74.7, "act": 75.9}, "cold": {"n": 1384, "pred": 67.9, "act": 68.9}}, "fix": {"n": 6920, "gain": 0.001, "win": -0.06, "better": 7, "of": 12}, "upL": {"n": 672, "ltf": 0.2, "se": 0.6, "won": 53.0, "pos": 6, "yrs": 12}, "upW": {"n": 663, "ltf": 0.1, "se": 0.6, "won": 45.9, "pos": 7, "yrs": 12}}
+LEAGUE_CHECK = {"seasons": "2014 to 2025", "pp": {"n": 238, "su": 71.8, "miss": 13.4}, "cross": {"n": 626, "su": 83.2, "short": 4.0, "won": 83.5, "by": 18.9, "before": 10.8}, "lean": [{"lg": "SEC", "n": 78, "by": 0.1, "se": 1.9, "beat": 38}, {"lg": "Big Ten", "n": 64, "by": -1.5, "se": 2.3, "beat": 30}, {"lg": "Big 12", "n": 42, "by": 7.3, "se": 2.4, "beat": 29}, {"lg": "ACC", "n": 158, "by": -4.2, "se": 1.3, "beat": 60}, {"lg": "Pac-12", "n": 40, "by": 1.2, "se": 2.6, "beat": 23}, {"lg": "Notre Dame", "n": 94, "by": 4.1, "se": 1.7, "beat": 58}], "rec": [{"lg": "SEC", "w": 93, "l": 71, "by": 2.6}, {"lg": "Big Ten", "w": 72, "l": 77, "by": -0.4}, {"lg": "Big 12", "w": 55, "l": 59, "by": 1.0}, {"lg": "ACC", "w": 88, "l": 157, "by": -6.6}, {"lg": "Pac-12", "w": 49, "l": 47, "by": -2.8}, {"lg": "Notre Dame", "w": 82, "l": 28, "by": 12.8}], "pairs": [{"a": "SEC", "b": "ACC", "w": 54, "l": 41, "by": 3.7}, {"a": "SEC", "b": "Big 12", "w": 17, "l": 12, "by": 0.8}, {"a": "SEC", "b": "Big Ten", "w": 8, "l": 9, "by": 0.3}, {"a": "Big Ten", "b": "ACC", "w": 26, "l": 23, "by": 1.5}, {"a": "Big Ten", "b": "Big 12", "w": 19, "l": 15, "by": 1.3}, {"a": "Big 12", "b": "ACC", "w": 17, "l": 12, "by": 3.5}], "b12Early": 41, "top25": {"SEC": 7.2, "Pac-12": 3.2, "Big 12": 4.1, "Big Ten": 4.8, "ACC": 3.8, "Other": 1.1, "Notre Dame": 0.8}, "without": {"su": 71.8, "miss": 13.3}}
+BUYSELL = {"seasons": "2014 to 2025", "weeks": 132, "sell": {"n": 374, "per": 2.8, "before": 78.1, "exp": 41.7, "act": 39.5, "w": 416, "l": 636, "none": 20, "of": 12, "rec": 61.8, "seasons": 12}, "buy": {"n": 731, "per": 5.5, "before": 43.8, "exp": 59.5, "act": 58.9, "w": 1225, "l": 856, "none": 17, "of": 12, "rec": 56.2, "seasons": 12}}
+#backtest>>
 
 POWER = ["ACC", "Big 12", "Big Ten", "SEC"]
 CONF_SHORT = {"American Athletic": "American", "Conference USA": "C-USA", "Mid-American": "MAC",
@@ -199,6 +235,76 @@ def ridge(X, y, w, alpha, n_free):
     return np.linalg.solve(XtW @ X + pen, XtW @ y)
 
 
+def fbs_names(sched):
+    return set(sched[sched.home_division == "fbs"].home_team) | set(sched[sched.away_division == "fbs"].away_team)
+
+
+def leagues_of(sched):
+    """Each FBS team's league, and whether it sits in the power tier. Independents have no league.
+    Notre Dame is counted with the power leagues, as it is everywhere on the site."""
+    conf = {}
+    for r in sched.itertuples():
+        if r.home_division == "fbs": conf[r.home_team] = r.home_conference
+        if r.away_division == "fbs": conf[r.away_team] = r.away_conference
+    league = {t: (None if (not isinstance(c, str) or "Independent" in c) else c) for t, c in conf.items()}
+    power = {t: (conf[t] in POWER or t == "Notre Dame") for t in conf}
+    return league, power
+
+
+def league_design(teams, league, power):
+    """Which league and which tier each team in a fit belongs to, as two tables of ones and zeros."""
+    names = sorted({league[t] for t in teams if league.get(t)})
+    at = {c: i for i, c in enumerate(names)}
+    M, M2 = np.zeros((len(teams), len(names))), np.zeros((len(teams), 1))
+    for i, t in enumerate(teams):
+        if league.get(t): M[i, at[league[t]]] = 1.0
+        if power.get(t): M2[i, 0] = 1.0
+    return {"M": M, "M2": M2, "names": names}
+
+
+def ridge_leagues(X, y, w, alpha, n_free, L):
+    """Weighted ridge in which a team's number is the level of its tier, plus the level of its league, plus its own
+    difference from that. The team columns of X come in blocks of one column per team (offense then defense, or a single
+    block for a margin). Returns the numbers per team, and the tier and league levels found for each block.
+
+    The tier level is held loosely (ALPHA_TIER), so the season's games between the power leagues and everyone else set
+    it. Each league's own level is held very firmly (ALPHA_LEAGUE), so one league only pulls away from another in its
+    tier when this season's games between them clearly call for it. Without the levels, every team is pulled toward one
+    national average, which sells the gap between the two tiers short by about a touchdown (research/pure_gap.py)."""
+    M, M2 = L["M"], L["M2"]
+    T, k = M.shape
+    blocks = (X.shape[1] - n_free) // T
+    parts, pens = [X], []
+    for b in range(blocks):
+        Xb = X[:, n_free + b * T: n_free + (b + 1) * T]
+        parts += [Xb @ M, Xb @ M2]
+        pens += [ALPHA_LEAGUE] * k + [ALPHA_TIER]
+    XX = np.hstack(parts)
+    w = np.asarray(w, float)
+    w = w / w.mean()
+    XtW = XX.T * w
+    pen = np.diag(np.r_[np.zeros(n_free), np.full(X.shape[1] - n_free, float(alpha)), np.array(pens)])
+    b = np.linalg.solve(XtW @ XX + pen, XtW @ y)
+    out, k0, levels = b[:X.shape[1]].copy(), X.shape[1], []
+    for i in range(blocks):
+        lv, tv = b[k0 + i * (k + 1): k0 + i * (k + 1) + k], float(b[k0 + i * (k + 1) + k])
+        out[n_free + i * T: n_free + (i + 1) * T] += M @ lv + M2[:, 0] * tv
+        levels.append({"tier": tv, "league": dict(zip(L["names"], (float(v) for v in lv)))})
+    return out, levels
+
+
+def pooled(sched, pbp):
+    """The schedule and the plays with every lower-division team renamed to one pooled opponent, so that games against
+    them count. Their strength is then worked out from this season's games like any other team's."""
+    fb = fbs_names(sched)
+    s, p = sched.copy(), pbp.copy()
+    for c in ("home_team", "away_team"):
+        s[c] = s[c].where(s[c].isin(fb), POOL)
+    for c in ("pos_team", "def_pos_team", "home_team", "away_team"):
+        p[c] = p[c].where(p[c].isin(fb), POOL)
+    return s[(s.home_team != POOL) | (s.away_team != POOL)], p
+
+
 # ---- load ------------------------------------------------------------------
 def load():
     sched = pd.read_csv(os.path.join(RAW, "sched.csv"))
@@ -206,7 +312,8 @@ def load():
     cols = ["game_id", "week", "pos_team", "def_pos_team", "home_team", "away_team", "period",
             "pos_score_diff_start", "rush", "pass", "penalty_no_play", "EPA", "success", "yards_gained",
             "sack", "int", "fumble_vec", "pass_breakup_player_name", "punt", "fg_inds",
-            "drive_id", "drive_result", "formatted_spread", "over_under", "down", "yards_to_goal", "distance", "play_type"]
+            "drive_id", "drive_result", "formatted_spread", "over_under", "down", "yards_to_goal", "distance", "play_type",
+            "pos_team_score", "def_pos_team_score"]
     pbp = pd.read_parquet(os.path.join(RAW, "pbp.parquet"), columns=cols)
     pbp = pbp[pbp.game_id.isin(sched.game_id)].copy()
     colors = pd.read_csv(os.path.join(RAW, "colors.csv"), encoding="latin-1")
@@ -240,9 +347,10 @@ def game_lines(pbp):
 STOPS = ["PUNT", "DOWNS", "INT", "FUMBLE", "INT TD", "FUMBLE RETURN TD", "FUMBLE TD", "PUNT TD", "SF"]
 
 
-def efficiency(pbp, fbs_games, teams):
-    """Opponent-adjusted offense and defense numbers for each FBS team, using only
-    FBS-vs-FBS games. Garbage time is removed from everything except yards per game."""
+def efficiency(pbp, fbs_games, teams, L=None):
+    """Opponent-adjusted offense and defense numbers for each team in `teams`, from the games given. The site passes
+    every game, with lower-division opponents pooled as one team (the last name in `teams`), and the league design L.
+    Garbage time is removed from everything except yards per game."""
     idx = {t: i for i, t in enumerate(teams)}
     T = len(teams)
     keys = ["game_id", "pos_team", "def_pos_team", "home_team"]
@@ -302,7 +410,8 @@ def efficiency(pbp, fbs_games, teams):
         X[:, 1] = h[ok]
         X[np.arange(len(d)), 2 + d.pos_team.map(idx).values] = 1.0
         X[np.arange(len(d)), 2 + T + d.def_pos_team.map(idx).values] = -1.0
-        b = ridge(X, d[col].values.astype(float), d[wcol].values, ALPHA_PLAY, 2)
+        yv = d[col].values.astype(float)
+        b = ridge_leagues(X, yv, d[wcol].values, ALPHA_PLAY, 2, L)[0] if L else ridge(X, yv, d[wcol].values, ALPHA_PLAY, 2)
         return b[0] + b[2:2 + T], b[0] - b[2 + T:]     # what the offense produces, what the defense gives up
 
     res = pd.DataFrame(index=teams)
@@ -346,6 +455,13 @@ def efficiency(pbp, fbs_games, teams):
     realA = ~p_all.drive_result.isin(["END OF HALF", "END OF GAME", "END OF 4TH QUARTER", "Uncategorized", "KICKOFF", "PENALTY"])
     dcount = p_all[realA & p_all.drive_id.notna()].groupby(["game_id", "pos_team"]).drive_id.nunique().reset_index()
     res["dpg"] = dcount.groupby("pos_team").drive_id.mean().reindex(teams).values
+    res = res.drop(index=POOL, errors="ignore")      # the pooled lower-division opponent has done its job
+    return score_stats(res)
+
+
+def score_stats(res):
+    """The offense and defense grades, as standard scores among the teams in the table."""
+    res = res.copy()
     res["off_z"] = z(0.30 * z(res.o_epa) + 0.25 * z(res.o_sr) + 0.20 * z(res.o_ppd) + 0.10 * z(res.o_ppo)
                      + 0.10 * z(res.o_exp) + 0.05 * z(res.o_yds)).values
     res["def_z"] = z(-0.25 * z(res.d_epa) - 0.20 * z(res.d_sr) - 0.20 * z(res.d_ppd) - 0.10 * z(res.d_ppo)
@@ -355,33 +471,83 @@ def efficiency(pbp, fbs_games, teams):
     return res
 
 
-def margin_rating(fbs_games, teams):
+def margin_rating(games, teams, L=None):
+    """Scoring margin per game against an average team, adjusted for opponent and home field. Blowouts are capped."""
     idx = {t: i for i, t in enumerate(teams)}
     T = len(teams)
-    g = fbs_games
+    g = games
     X = np.zeros((len(g), T))
     X[np.arange(len(g)), g.home_team.map(idx).values] = 1.0
     X[np.arange(len(g)), g.away_team.map(idx).values] = -1.0
     m = (g.home_points - g.away_points).clip(-MARGIN_CAP, MARGIN_CAP).values - HFA * (~g.neutral_site.astype(bool)).values
-    b = ridge(X, m.astype(float), np.ones(len(g)), ALPHA_MARGIN, 0)
-    return pd.Series(b, index=teams)
+    if L:
+        b, lv = ridge_leagues(X, m.astype(float), np.ones(len(g)), ALPHA_MARGIN, 0, L)
+        return pd.Series(b, index=teams), lv[0]
+    return pd.Series(ridge(X, m.astype(float), np.ones(len(g)), ALPHA_MARGIN, 0), index=teams), None
 
 
-def power_ratings(sched, pbp, max_week):
-    """The yardstick: a points-scale rating built from efficiency and adjusted margin,
-    using completed games through max_week."""
+def halftime_margins(pbp):
+    """The home team's lead at halftime in each game, read from the score as the third quarter starts."""
+    h = pbp[pbp.period == 3].groupby("game_id").head(1)
+    lead = np.where(h.pos_team == h.home_team, h.pos_team_score - h.def_pos_team_score, h.def_pos_team_score - h.pos_team_score)
+    return pd.Series(lead.astype(float), index=h.game_id.values)
+
+
+def first_half_rating(pbp, games, teams, L=None):
+    """Scoring margin at halftime against an average team, adjusted for opponent, with home field left for the fit to
+    find. A lead built by halftime says more about the two teams than what happens once the game is decided.
+    The site passes games between FBS teams only (see H1_FBS_ONLY)."""
+    idx = {t: i for i, t in enumerate(teams)}
+    T = len(teams)
+    g = games.assign(h1=games.game_id.map(halftime_margins(pbp)))
+    g = g[g.h1.notna()]
+    if len(g) < 5:
+        return pd.Series(0.0, index=teams)
+    X = np.zeros((len(g), 1 + T))
+    X[:, 0] = (~g.neutral_site.astype(bool)).values.astype(float)
+    X[np.arange(len(g)), 1 + g.home_team.map(idx).values] = 1.0
+    X[np.arange(len(g)), 1 + g.away_team.map(idx).values] = -1.0
+    y = g.h1.clip(-H1_CAP, H1_CAP).values.astype(float) if H1_CAP else g.h1.values.astype(float)
+    b = ridge_leagues(X, y, np.ones(len(g)), ALPHA_MARGIN, 1, L)[0] if L else ridge(X, y, np.ones(len(g)), ALPHA_MARGIN, 1)
+    return pd.Series(b[1:], index=teams)
+
+
+def power_ratings(sched, pbp, max_week, pool=None):
+    """Everything the index is built from, using completed games through max_week: the efficiency numbers, the two
+    margin ratings, and a points-scale power rating (the yardstick strength of record measures opponents with).
+    `pool` is the output of pooled(sched, pbp), passed in when it has already been worked out."""
     done = sched[sched.completed & (sched.week <= max_week)].copy()
     fbs = done[(done.home_division == "fbs") & (done.away_division == "fbs")].copy()
-    teams = sorted(set(sched[sched.home_division == "fbs"].home_team) | set(sched[sched.away_division == "fbs"].away_team))
+    teams = sorted(fbs_names(sched))
     teams = [t for t in teams if t in set(fbs.home_team) | set(fbs.away_team)]
-    eff = efficiency(pbp[pbp.week <= max_week], fbs, teams)
-    mar = margin_rating(fbs, teams)
+    ps, pp = pool if pool is not None else pooled(sched, pbp)
+    games = ps[ps.completed & (ps.week <= max_week)]
+    played = sorted((set(games.home_team) | set(games.away_team)) - {POOL}) + [POOL]
+    league, power = leagues_of(sched)
+    L = league_design(played, league, power)
+    plays = pp[pp.week <= max_week]
+    drop = lambda v: v.drop(index=POOL, errors="ignore")
+    eff = score_stats(efficiency(plays, games, played, L).reindex(teams))      # graded among the teams being ranked
+    mar, levels = margin_rating(games, played, L)
+    if H1_FBS_ONLY:      # a study setting: the first-half part from games between FBS teams only
+        ft = sorted(set(fbs.home_team) | set(fbs.away_team))
+        h1 = first_half_rating(pbp[pbp.week <= max_week], fbs, ft, league_design(ft, league, power) if H1_LEAGUES else None)
+    else:
+        h1 = first_half_rating(plays, games, played, L if H1_LEAGUES else None)
+    mar, h1 = drop(mar), drop(h1)
+    mar, h1 = (mar - mar.mean()).reindex(teams), (h1 - h1.mean()).reindex(teams)      # against an average FBS team
     pz = z(0.6 * eff.eff_z + 0.4 * z(mar).values)
     # put the z-score on a points scale: the slope that best maps rating gaps onto actual margins
     x = (fbs.home_team.map(pz) - fbs.away_team.map(pz)).values
     y = (fbs.home_points - fbs.away_points).clip(-35, 35).values - HFA * (~fbs.neutral_site.astype(bool)).values
     k = float((x * y).sum() / (x * x).sum())
-    return teams, eff, mar, pz * k, k, done, fbs
+    return {"teams": teams, "eff": eff, "mar": mar, "h1": h1, "pw": pz * k, "k": k, "done": done, "fbs": fbs, "levels": levels}
+
+
+def index_z(res_z, off_z, def_z, mar_z, h1_z):
+    """The LTF Index as a standard score, from its five parts."""
+    W = WEIGHTS
+    return z((W["res"] * res_z + W["off"] * off_z + W["def"] * def_z + W["mar"] * mar_z + W["h1"] * h1_z) / sum(W.values()))
 
 
 STAT_COLS = ["o_epa", "d_epa", "o_sr", "d_sr", "o_ppd", "d_ppd", "o_ppo", "d_ppo", "o_exp", "d_exp", "o_yds", "d_yds", "d_stop", "d_hav",
@@ -399,15 +565,13 @@ def stat_fields(row):
             "osd": f(row.o_sdn * 100, 1), "dsd": f(row.d_sdn * 100, 1), "opd": f(row.o_pdn * 100, 1), "dpd": f(row.d_pdn * 100, 1)}
 
 
-def snapshot(sched, pbp, W):
-    """The index's parts as they stood after week W, from games played through W only.
-    Computer ratings here are Elo alone, because that is the only rating with week-by-week history."""
-    teams, eff, mar, pw, k, done, fbs = power_ratings(sched, pbp, W)
+def record_parts(P, done):
+    """Each team's record and the pieces of the résumé, from the power ratings P and the finished games."""
+    teams, pw = P["teams"], P["pw"]
     tset = set(teams)
     pw_rank = pw.rank(ascending=False, method="min")
-    ref = float(pw.sort_values(ascending=False).head(25).mean())
+    ref = float(pw.sort_values(ascending=False).head(25).mean())      # a typical top-25 team
     L = {t: [] for t in teams}
-    elo = {}
     for g in done.sort_values(["week", "start_date"]).itertuples():
         neutral = bool(g.neutral_site)
         for side in ("home", "away"):
@@ -420,112 +584,44 @@ def snapshot(sched, pbp, W):
             s_ = 0 if neutral else (1 if side == "home" else -1)
             r_opp = float(pw[opp]) if opp in tset else FCS_RATING
             pref = phi((ref - r_opp + s_ * HFA) / SIGMA)
-            e = g.home_postgame_elo if side == "home" else g.away_postgame_elo
-            # the Elo attached to games against FCS teams is stale in the source data, so skip those rows
-            if pd.notna(e) and g.home_division == "fbs" and g.away_division == "fbs":
-                elo[team] = float(e)
-            L[team].append((opp, pf > pa, pref, "N" if neutral else ("H" if side == "home" else "A")))
+            L[team].append({"wk": int(g.week), "opp": opp, "fcs": opp not in tset, "win": pf > pa, "loss": pf < pa, "pref": pref,
+                            "site": "N" if neutral else ("H" if side == "home" else "A"), "conf": bool(g.conference_game)})
     rows = []
     for t in teams:
         G = L[t]
-        w = sum(1 for x in G if x[1])
+        w = sum(1 for x in G if x["win"])
+        # strength of record: chance a typical top-25 team does at least this well against this schedule
         dist = np.array([1.0])
         for x in G:
-            dist = np.convolve(dist, [1 - x[2], x[2]])
+            dist = np.convolve(dist, [1 - x["pref"], x["pref"]])
         sor = 1.0 - (dist[w + 1:].sum() + 0.5 * dist[w])
-        qw = 0.0
+        qw, qlist = 0.0, []
         for x in G:
-            if x[1] and x[0] in tset:
-                rk = int(pw_rank[x[0]])
+            if x["win"] and not x["fcs"]:
+                rk = int(pw_rank[x["opp"]])
                 base = 1.0 if rk <= 25 else (0.6 if rk <= 50 else 0.0)
-                qw += base * {"H": 1.0, "N": 1.1, "A": 1.2}[x[3]]
-        bl = sum(x[2] for x in G if not x[1])
-        rows.append({"team": t, "w": w, "l": len(G) - w, "sor": sor, "qw": qw, "bl": bl,
-                     "sos": 1.0 - float(np.mean([x[2] for x in G]))})
+                if base:
+                    qw += base * {"H": 1.0, "N": 1.1, "A": 1.2}[x["site"]]
+                    qlist.append(x["opp"])
+        rows.append({"team": t, "w": w, "l": len(G) - w, "sor": sor, "qw": qw, "qlist": qlist,
+                     "bl": sum(x["pref"] for x in G if x["loss"]), "sos": 1.0 - float(np.mean([x["pref"] for x in G]))})
     S = pd.DataFrame(rows).set_index("team")
-    sor_z = z(S.sor.clip(0.002, 0.998).map(probit))
-    S["res_z"] = resume_z(sor_z, z(S.qw), z(mar.reindex(S.index)))
-    S["off_z"], S["def_z"] = eff.off_z, eff.def_z
-    S["elo_z"] = z(pd.Series(elo).reindex(S.index))
+    S["sor_z"], S["qw_z"] = z(S.sor.clip(0.002, 0.998).map(probit)), z(S.qw)
+    S["mar"], S["h1"] = P["mar"].reindex(S.index), P["h1"].reindex(S.index)
+    S["mar_z"], S["h1_z"] = z(S.mar), z(S.h1)
+    S["res_z"] = resume_z(S.sor_z, S.qw_z, S.mar_z)
+    S["off_z"], S["def_z"] = P["eff"].off_z, P["eff"].def_z
+    S["idx_z"] = index_z(S.res_z, S.off_z, S.def_z, S.mar_z, S.h1_z)
+    return S, ref
+
+
+def snapshot(sched, pbp, W, pool=None):
+    """The index's parts as they stood after week W, from games played through W only."""
+    P = power_ratings(sched, pbp, W, pool)
+    S, _ = record_parts(P, P["done"])
     for c_ in STAT_COLS:
-        S[c_] = eff[c_]
+        S[c_] = P["eff"][c_]
     return S
-
-
-# Does momentum predict anything? Twelve seasons (research/momentum_study.py). "carry" is whether beating the spread one week
-# says anything about the next. "sig" is how the team with more of each kind of momentum did against the spread, overall and
-# for the strongest fifth of cases. "fav" is how LTF favorites did when hot or cold. "fix" is how much the LTF line improves
-# if momentum is added to it. "upW" and "upL" are the week after an upset win or an upset loss of 7 points or more.
-MOMENTUM = {"seasons": "2014 to 2025", "games": 6033, 
-            "carry": {"n": 11958, "corr": 0.018, "hot": 50.2, "hotN": 3049, "cold": 50.1, "coldN": 3031}, 
-            "sig": [{"k": "trend3", "n": 5596, "ats": 50.1, "top": 50.3, "nb": 1120}, {"k": "form2", "n": 5090, "ats": 50.7, "top": 50.5, "nb": 1018}, {"k": "last1", "n": 5858, "ats": 50.7, "top": 50.2, "nb": 1172}, {"k": "wstreak", "n": 5062, "ats": 50.9, "top": 51.9, "nb": 1123}, {"k": "cstreak", "n": 4825, "ats": 50.2, "top": 47.3, "nb": 1497}, {"k": "ats3", "n": 5810, "ats": 50.1, "top": 52.5, "nb": 1169}, {"k": "lastcm", "n": 5801, "ats": 50.0, "top": 49.7, "nb": 1199}, {"k": "ups3", "n": 2336, "ats": 50.2, "top": 50.2, "nb": 2336}, {"k": "prog", "n": 4707, "ats": 50.5, "top": 49.9, "nb": 942}], 
-            "fav": {"cold": {"n": 595, "pred": 69.7, "act": 69.2}, "hot": {"n": 595, "pred": 71.5, "act": 73.1}, "streak": {"n": 371, "pred": 78.2, "act": 80.3}, "skid": {"n": 294, "pred": 63.8, "act": 63.3}}, 
-            "fix": {"n": 2031, "gain": 0.07, "win": -0.39, "better": 5, "of": 5}, 
-            "upW": {"n": 538, "ats": 50.7, "ltf": -1.5, "se": 1.1, "nl": 204, "mod": -0.8, "nm": 400, "pos": 0, "yrs": 5}, 
-            "upL": {"n": 538, "ats": 52.4, "ltf": 3.1, "se": 1.1, "nl": 208, "mod": 0.7, "nm": 413, "pos": 5, "yrs": 5}, 
-            "upLfix": {"n": 2150, "gain": 0.024, "win": -0.14, "better": 4, "of": 5}}
-
-# Breakout finder (research/breakout_study.py). After weeks 4 to 7, three things marked teams the LTF Index was too low on:
-# failing to cover the spread, a much higher rating before the season, and bad turnover luck. "wk" holds, for each week,
-# the weight on each of the three ("c") and how the top and bottom tenth of teams by that score went on to do.
-BREAKOUT = {"seasons": "2021 to 2025", "long": {"seasons": "2014 to 2025", "n": 1510}, "wk": {"4": {"c": [0.737, 1.604, 0.414], "n": 664, "corr": 0.214, "top": {"n": 68, "surprise": 3.0, "climb": 11.3, "up10": 51.5, "cover": 52.7}, "bottom": {"n": 69, "surprise": -2.7, "climb": -9.8, "down10": 39.1}, "base10": 29.4}, "5": {"c": [1.12, 0.616, 0.551], "n": 664, "corr": 0.181, "top": {"n": 68, "surprise": 3.1, "climb": 9.3, "up10": 44.1, "cover": 51.9}, "bottom": {"n": 69, "surprise": -2.8, "climb": -9.1, "down10": 40.6}, "base10": 26.2}, "6": {"c": [1.261, 0.23, 0.594], "n": 664, "corr": 0.168, "top": {"n": 68, "surprise": 2.0, "climb": 7.2, "up10": 35.3, "cover": 50.9}, "bottom": {"n": 69, "surprise": -1.8, "climb": -5.5, "down10": 34.8}, "base10": 24.4}, "7": {"c": [1.35, -0.305, 0.44], "n": 664, "corr": 0.125, "top": {"n": 68, "surprise": 1.8, "climb": 6.3, "up10": 32.4, "cover": 50.5}, "bottom": {"n": 69, "surprise": -2.0, "climb": -6.1, "down10": 34.8}, "base10": 22.0}}}
-# When LTF and the prediction model are on the same side against the spread (research/agree_study.py). Against closing
-# lines it is a coin flip. Against opening lines it has done better, and the line then tends to move that way.
-AGREE = {"seasons": "2021 to 2025", "close": {"n": 1814, "pct": 52.4, "se": 1.2}, "close4": {"n": 436, "pct": 49.8, "se": 2.4}, "with": {"n": 606, "pct": 52.3, "se": 2.0}, "against": {"n": 927, "pct": 51.9, "se": 1.6}, "open": {"n": 1798, "pct": 53.4, "se": 1.2}, "open2": {"n": 997, "pct": 53.5, "se": 1.6, "toward": 61.1, "clv": 0.55}, "open4": {"n": 455, "pct": 52.3, "se": 2.3, "toward": 64.7, "clv": 0.81}, "ltf": {"n": 2449, "pct": 51.1, "se": 1.0}, "mod": {"n": 2449, "pct": 52.4, "se": 1.0}, "splitLtf": {"n": 635, "pct": 47.6, "se": 2.0}, "splitMod": {"n": 635, "pct": 52.4, "se": 2.0}}
-
-MODEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.json")     # the prediction model, fitted on 2015 to 2025
-
-# What the model did on 6,441 games it had never seen, 2017 to 2025 (see research/). Shown on the tracker page.
-RESEARCH = {"games": 6441, "seasons": "2017 to 2025", "su": 72.2, "mktSu": 73.9, "miss": 12.9, "closeMiss": 12.2, "openMiss": 12.4,
-            "atsClose": [3214, 3073], "atsOpen": [2908, 2798], "gap4Close": [1217, 1241], "gap4Open": [1144, 1077],
-            "p4Open": [428, 358], "lateOpen": [328, 260], "totClose": 50.3, "totOpen": 52.1, "ml": -6.5, "moveToward": 58.7, "movePts": 0.86}
-
-
-def model_predict(model, sched, eff, mar, fbs, targets, prior=None):
-    """Margin and total the prediction model expects for each target game (FBS against FBS), from stats to date.
-    This must stay in step with research/research_model.py, which is where the model was fitted."""
-    good, prior = model["good"], (prior if prior is not None else model["prior"])
-    cols = list(good) + ["dpg"]
-    t = eff.copy(); t["mar"] = mar
-    zt = t[cols].astype(float)
-    for c in cols:
-        sd = zt[c].std(ddof=0)
-        zt[c] = (zt[c] - zt[c].mean()) / sd if sd > 0 else 0.0
-    zt = zt.fillna(0.0)
-    gpf = pd.concat([fbs.home_team, fbs.away_team]).value_counts()
-    rest, lastd = {}, {}
-    for g in sched.sort_values("start_date").itertuples():
-        d = pd.Timestamp(g.start_date)
-        for nm in (g.home_team, g.away_team):
-            rest[(g.game_id, nm)] = (d - lastd[nm]).days if nm in lastd else None
-            lastd[nm] = d
-    cm, ct = model["margin"]["coef"], model["total"]["coef"]
-    out = {}
-    for g in targets.itertuples():
-        h, a = g.home_team, g.away_team
-        if pd.isna(g.home_pregame_elo) or pd.isna(g.away_pregame_elo):
-            continue
-        have = h in zt.index and a in zt.index
-        rel = (min(gpf.get(h, 0), 8) + min(gpf.get(a, 0), 8)) / 16.0 if have else 0.0
-        f = {"elo": (g.home_pregame_elo - g.away_pregame_elo) / 25.0, "homef": 0.0 if g.neutral_site else 1.0}
-        f["r_elo"] = f["elo"] * rel
-        clip = lambda v: min(16, max(4, 14 if v is None else v))
-        f["restd"] = clip(rest.get((g.game_id, h))) - clip(rest.get((g.game_id, a)))
-        for c, sgn in good.items():
-            f["r_d_" + c] = (sgn * (zt.at[h, c] - zt.at[a, c]) if have else 0.0) * rel
-        for c in model["prior_cols"]:
-            pv = (prior[h][c] if h in prior else -1.0) - (prior[a][c] if a in prior else -1.0)
-            f["p_" + c] = pv
-            f["q_p_" + c] = pv * (1 - rel)
-        f["aelo"] = abs(f["elo"]); f["elosum"] = (g.home_pregame_elo + g.away_pregame_elo - 3000) / 25.0
-        f["ps_off"] = (prior[h]["off_z"] if h in prior else 0.0) + (prior[a]["off_z"] if a in prior else 0.0)
-        f["ps_def"] = (prior[h]["def_z"] if h in prior else 0.0) + (prior[a]["def_z"] if a in prior else 0.0)
-        f["q_off"] = f["ps_off"] * (1 - rel); f["q_def"] = f["ps_def"] * (1 - rel)
-        for c in model["off"] + model["def"] + ["dpg"]:
-            f["rs_s_" + c] = ((zt.at[h, c] + zt.at[a, c]) if have else 0.0) * rel
-        out[g.game_id] = (model["margin"]["intercept"] + sum(v * f[k] for k, v in cm.items()),
-                          model["total"]["intercept"] + sum(v * f[k] for k, v in ct.items()))
-    return out
 
 
 def week_in_books(sched, pbp_ids):
@@ -567,22 +663,74 @@ def load_ledger():
 def save_ledger(data):
     """One pick per line, in a fixed order, so the file's history shows exactly what was added and when."""
     picks = sorted(data["picks"], key=lambda q: (q["w"], q["id"]))
-    cmp_ = {}
-    for t in data["teams"]:
-        for h in t["h"]:
-            if h.get("c") is not None:
-                cmp_.setdefault(str(h["w"]), {})[t["n"]] = h["c"]
     dump = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False, sort_keys=True)
     finals = sum(1 for g in data["games"] if g["hp"] is not None)
+    calls = sorted((q for q in data.get("calls", []) if not q.get("rb")), key=lambda q: (q["w"], q["k"] != "sell", q["t"]))
     out = ["{", f'"season": {SEASON},', f'"through": {data["meta"]["through"]},', f'"finals": {finals},', '"picks": [']
     out += [dump(q) + ("," if i < len(picks) - 1 else "") for i, q in enumerate(picks)]
-    out += ["],", '"cmp": {']
-    wks = sorted(cmp_, key=int)
-    out += [f'"{w}": ' + dump(cmp_[w]) + ("," if i < len(wks) - 1 else "") for i, w in enumerate(wks)]
-    out += ["}", "}"]
+    out += ["],", '"calls": [']
+    out += [dump(q) + ("," if i < len(calls) - 1 else "") for i, q in enumerate(calls)]
+    out += ["]", "}"]
     with open(LEDGER, "w", encoding="utf-8") as f:
         f.write("\n".join(out) + "\n")
-    print(f"ledger: {len(picks)} picks on file, computer ratings kept for weeks {', '.join(wks) or 'none'}")
+    print(f"ledger: {len(picks)} picks on file, {len(calls)} buy and sell calls")
+
+
+# ---- buying and selling ----------------------------------------------------------------
+# A team's streak says one thing and LTF's read of their next games says another. Selling: they have won three or more
+# in a row, and LTF expects them to lose more than they win over their next three games. Buying: they have lost two or
+# more in a row, and LTF expects them to win more than they lose. "Next three" means games against FBS teams, since LTF
+# sets no line against anyone else, and late in the season the two that are left will do. This is not a new prediction.
+# It is the LTF line for those games, added up team by team. The same function grades past seasons in backtest_site.py.
+BUY_SELL = {"win": 3, "loss": 2, "games": 3, "least": 2}
+
+
+def buy_sell(sched, W, idx, slope):
+    """The two lists as they stood after week W. sched: the season's games. idx: the LTF Index after week W, by FBS team,
+    in standard deviations. slope: points per standard deviation at that point of the season."""
+    s = sched.sort_values(["start_date", "game_id"])
+    fin = s[(s.week <= W) & s.completed.astype(bool) & s.home_points.notna()]
+    res = {}
+    for g in fin.itertuples():
+        if g.home_team in idx.index:
+            res.setdefault(g.home_team, []).append(bool(g.home_points > g.away_points))
+        if g.away_team in idx.index:
+            res.setdefault(g.away_team, []).append(bool(g.away_points > g.home_points))
+    nxt = {}
+    for g in s[(s.week > W) & s.home_team.isin(idx.index) & s.away_team.isin(idx.index)].itertuples():
+        for t in (g.home_team, g.away_team):
+            if len(nxt.setdefault(t, [])) < BUY_SELL["games"]:
+                nxt[t].append(g)
+    out = []
+    for t, r in res.items():
+        k = 1
+        while k < len(r) and r[-k - 1] == r[-1]:
+            k += 1
+        st = k if r[-1] else -k
+        gs = nxt.get(t, [])
+        if not (st >= BUY_SELL["win"] or st <= -BUY_SELL["loss"]) or len(gs) < BUY_SELL["least"]:
+            continue
+        ps = []
+        for g in gs:
+            p = phi((slope * (idx[g.home_team] - idx[g.away_team]) + (0.0 if bool(g.neutral_site) else HFA)) / SIGMA)
+            ps.append(p if g.home_team == t else 1 - p)
+        x, half = sum(ps), len(ps) / 2
+        kind = "sell" if st > 0 and x < half else "buy" if st < 0 and x > half else None
+        if kind:
+            out.append({"t": t, "k": kind, "st": int(st), "r": [int(sum(r)), int(len(r) - sum(r))], "x": round(float(x), 2),
+                        "g": [[int(g.game_id), round(float(p), 3)] for g, p in zip(gs, ps)]})
+    out.sort(key=lambda q: (q["k"] != "sell", -abs(q["x"] - len(q["g"]) / 2), q["t"]))
+    return out
+
+
+def merge_pick(a, b):
+    """One game's entry from two copies of what is on file, b applied over a. When the two were made under different
+    versions of the formula, the newer one is kept whole, so an old copy can never put an old number back under a new label."""
+    fa, fb = a.get("f", 1), b.get("f", 1)
+    if fa != fb:
+        hi, lo = (a, b) if fa > fb else (b, a)
+        return {**{k: v for k, v in lo.items() if k in ("sp", "fp", "sa")}, **hi}
+    return {**a, **b}
 
 
 def load_prev(path):
@@ -607,9 +755,7 @@ def build(prev_path=None):
     lines = game_lines(pbp)
     api = load_api()
     A = api["data"] if api else {}
-    api_lines = {}                      # game id -> (home spread, total, book); DraftKings when it has one
-    open_lines = {}                     # game id -> (opening home spread, opening total)
-    for l in A.get("lines", []):
+    for l in A.get("lines", []):      # fill any finished game the play-by-play feed had no closing line for
         best = None
         for p in l.get("lines") or []:
             if p.get("spread") is None:
@@ -618,82 +764,21 @@ def build(prev_path=None):
                 best = p
                 break
             best = best or p
-        if best:
-            api_lines[l["id"]] = (float(best["spread"]), best.get("overUnder"), best.get("provider"))
-            if best.get("spreadOpen") is not None:
-                open_lines[l["id"]] = (float(best["spreadOpen"]), best.get("overUnderOpen"))
-    for gid, (hs, ou, _) in api_lines.items():      # fill any finished game the play-by-play feed had no line for
-        if lines.get(gid, (None, None))[0] is None:
-            lines[gid] = (hs, float(ou) if ou else None)
+        if best and lines.get(l["id"], (None, None))[0] is None:
+            lines[l["id"]] = (float(best["spread"]), None)
     through, week_notes = week_in_books(sched, set(pbp.game_id.unique()))
     for n_ in week_notes:
         print("note:", n_)
-    teams, eff, mar, pw, k, done, fbs = power_ratings(sched, pbp, through)
-    all_fbs = sorted(set(sched[sched.home_division == "fbs"].home_team) | set(sched[sched.away_division == "fbs"].away_team))
-    assert set(all_fbs) == set(teams), "an FBS team has no FBS game yet"
+    pool = pooled(sched, pbp)
+    P = power_ratings(sched, pbp, through, pool)
+    teams, eff, mar, h1, pw, k, done = P["teams"], P["eff"], P["mar"], P["h1"], P["pw"], P["k"], P["done"]
+    assert set(fbs_names(sched)) == set(teams), "an FBS team has no FBS game yet"
     conf = {}
     for r in sched.itertuples():
         if r.home_division == "fbs": conf[r.home_team] = r.home_conference
         if r.away_division == "fbs": conf[r.away_team] = r.away_conference
-
-    pw_rank = pw.rank(ascending=False, method="min")
-    ref = float(pw.sort_values(ascending=False).head(25).mean())   # a typical top-25 team
-
-    def opp_rating(name):
-        return float(pw[name]) if name in pw.index else FCS_RATING
-
-    # per-team game logs
-    logs = {t: [] for t in teams}
-    elo = {}
-    for g in done.sort_values(["week", "start_date"]).itertuples():
-        hs, ou = lines.get(g.game_id, (None, None))
-        neutral = bool(g.neutral_site)
-        for side in ("home", "away"):
-            team = g.home_team if side == "home" else g.away_team
-            if team not in logs:
-                continue
-            opp = g.away_team if side == "home" else g.home_team
-            pf = int(g.home_points if side == "home" else g.away_points)
-            pa = int(g.away_points if side == "home" else g.home_points)
-            site = "N" if neutral else ("H" if side == "home" else "A")
-            s = 0 if neutral else (1 if side == "home" else -1)
-            spr = None if hs is None else (hs if side == "home" else -hs)
-            p_ref = phi((ref - opp_rating(opp) + s * HFA) / SIGMA)
-            e = g.home_postgame_elo if side == "home" else g.away_postgame_elo
-            # the Elo attached to games against FCS teams is stale in the source data, so skip those rows
-            if pd.notna(e) and g.home_division == "fbs" and g.away_division == "fbs":
-                elo[team] = float(e)
-            logs[team].append({
-                "wk": int(g.week), "opp": opp, "fcs": opp not in logs, "site": site, "pf": pf, "pa": pa,
-                "conf": bool(g.conference_game), "spr": spr, "ou": ou, "pref": round(p_ref, 4),
-            })
-
-    rows = []
-    for t in teams:
-        L = logs[t]
-        w = sum(1 for x in L if x["pf"] > x["pa"])
-        l = len(L) - w
-        # strength of record: chance a typical top-25 team does at least this well against this schedule
-        dist = np.array([1.0])
-        for x in L:
-            dist = np.convolve(dist, [1 - x["pref"], x["pref"]])
-        midp = dist[w + 1:].sum() + 0.5 * dist[w]
-        sor = 1.0 - midp
-        qw = 0.0
-        qlist = []
-        for x in L:
-            if x["pf"] > x["pa"] and not x["fcs"]:
-                rk = int(pw_rank[x["opp"]])
-                base = 1.0 if rk <= 25 else (0.6 if rk <= 50 else 0.0)
-                if base:
-                    qw += base * {"H": 1.0, "N": 1.1, "A": 1.2}[x["site"]]
-                    qlist.append(x["opp"])
-        bl = sum(x["pref"] for x in L if x["pf"] < x["pa"])
-        sos = 1.0 - float(np.mean([x["pref"] for x in L]))
-        rows.append({"team": t, "w": w, "l": l, "sor": sor, "qw": qw, "bl": bl, "sos": sos,
-                     "cw": sum(1 for x in L if x["conf"] and x["pf"] > x["pa"]),
-                     "cl": sum(1 for x in L if x["conf"] and x["pf"] < x["pa"]), "qlist": qlist})
-    R = pd.DataFrame(rows).set_index("team")
+    R, ref = record_parts(P, done)
+    R["sos_z"] = z(R.sos)
     rec_now = {t: [0, 0, 0, 0] for t in teams}      # wins, losses, conference wins, conference losses, every final counted
     for g in sched[sched.completed & sched.home_points.notna()].itertuples():
         for nm, won in ((g.home_team, g.home_points > g.away_points), (g.away_team, g.away_points > g.home_points)):
@@ -701,23 +786,13 @@ def build(prev_path=None):
                 rec_now[nm][0 if won else 1] += 1
                 if bool(g.conference_game):
                     rec_now[nm][2 if won else 3] += 1
-    sor_z = z(R.sor.clip(0.002, 0.998).map(probit))
-    R["sos_z"] = z(R.sos)
-    R["mar_z"] = z(mar.reindex(R.index))
-    R["res_z"] = resume_z(sor_z, z(R.qw), R.mar_z)
-    R["elo"] = pd.Series(elo).reindex(R.index)
-    cmp_src = {}
-    for label, key, field in [("SP+", "sp", "rating"), ("FPI", "fpi", "fpi"), ("SRS", "srs", "rating")]:
-        col = pd.Series({r["team"]: r[field] for r in A.get(key, []) if r.get(field) is not None},
-                        dtype=float).reindex(R.index)
+
+    # Shown for comparison only, never part of the score: the AP poll, and the SP+ and FPI ratings the scorecard grades.
+    out_rate = {}
+    for key, field in (("sp", "rating"), ("fpi", "fpi")):
+        col = pd.Series({r["team"]: r[field] for r in A.get(key, []) if r.get(field) is not None}, dtype=float).reindex(R.index)
         if col.notna().mean() > 0.9:
-            cmp_src[label] = col
-            R[key] = col
-    cmp_src["Elo"] = R.elo
-    R["cmp_z"] = z(pd.concat([z(c) for c in cmp_src.values()], axis=1).mean(axis=1).fillna(0))
-
-
-    # AP rank, shown on the site for comparison only. It is not part of the score.
+            out_rate[key] = col
     ap_rank, ap_week = {}, None
     weekly = [r for r in A.get("rankings", []) if r.get("seasonType") == "regular"]
     if weekly:
@@ -727,40 +802,30 @@ def build(prev_path=None):
                 ap_rank = {x["school"]: int(x["rank"]) for x in p_["ranks"] if x.get("rank")}
                 ap_week = int(latest["week"])
 
-    # week-by-week history of the four parts, so the site can show movement and trends
+    # week-by-week history of the five parts, so the site can show movement and trends. Every week is rebuilt from the
+    # games played through that week, under today's formula.
     hist = {t: [] for t in teams}
+    idx_week = {}                        # the LTF Index after each week, for the buying and selling lists
     prev_stats = {}                      # last week's stat values, for trend arrows
     prev = load_prev(prev_path)
     if prev and prev.get("meta", {}).get("season") != SEASON:
         prev = None
     ledger = load_ledger()
-    prev_c = {}
-    if prev:
-        for pt in prev.get("teams", []):
-            for h_ in pt.get("h", []):
-                if h_.get("c") is not None:
-                    prev_c[(pt["n"], h_["w"])] = h_["c"]
-    if ledger:                           # what the ledger holds always wins
-        for w_, row_ in ledger.get("cmp", {}).items():
-            for t_, c_ in row_.items():
-                prev_c[(t_, int(w_))] = c_
     for W in range(2, through + 1):
         try:
-            S = snapshot(sched, pbp, W)
+            S = snapshot(sched, pbp, W, pool)
         except Exception as e:
             print("history skipped week", W, repr(e)[:100])
             continue
         if W == through:      # the history must agree with the main calculation
-            gap = max(float((S.res_z.reindex(R.index) - R.res_z).abs().max()),
-                      float((S.off_z.reindex(R.index) - eff.off_z.reindex(R.index)).abs().max()))
+            gap = float((S.idx_z.reindex(R.index) - R.idx_z).abs().max())
             assert gap < 0.01, f"history and main calculation disagree by {gap}"
         if W == through - 1:
             prev_stats = {t: stat_fields(S.loc[t]) for t in S.index}
+        idx_week[W] = S.idx_z.copy()
         for t in S.index:
-            full = float(R.cmp_z[t]) if W == through else prev_c.get((t, W))
-            hist[t].append({"w": W, "r": round(float(S.res_z[t]), 3), "o": round(float(S.off_z[t]), 3),
-                            "d": round(float(S.def_z[t]), 3), "e": round(float(S.elo_z[t]), 3),
-                            "c": None if full is None else round(full, 3), "rec": f"{int(S.w[t])}-{int(S.l[t])}"})
+            hist[t].append({"w": W, "r": round(float(S.res_z[t]), 3), "o": round(float(S.off_z[t]), 3), "d": round(float(S.def_z[t]), 3),
+                            "m": round(float(S.mar_z[t]), 3), "f": round(float(S.h1_z[t]), 3), "rec": f"{int(S.w[t])}-{int(S.l[t])}"})
 
     cinfo = colors.drop_duplicates("school").set_index("school")
     cinfo = cinfo.rename(index={v: k2 for k2, v in COLOR_ALIAS.items() if v in cinfo.index and k2 not in cinfo.index})
@@ -769,33 +834,6 @@ def build(prev_path=None):
         if abs(g.home_points - g.away_points) <= 8:
             for nm, won in ((g.home_team, g.home_points > g.away_points), (g.away_team, g.away_points > g.home_points)):
                 c_ = close.setdefault(nm, [0, 0]); c_[0] += int(won); c_[1] += 1
-    # what the betting market thinks of each team, read back out of its own lines: the last three
-    # weeks of closing spreads plus this week's, with newer lines counting for more
-    mk_rows = []
-    idx = {t: i for i, t in enumerate(teams)}
-    upc_ = sched[(~sched.completed) & (sched.week > through)]
-    next_wk_ = int(upc_.week.min()) if len(upc_) else None
-    for g in sched[(sched.home_division == "fbs") & (sched.away_division == "fbs")].itertuples():
-        if g.completed and g.week > through:
-            hs_ = lines.get(g.game_id, (None, None))[0]; wt = 1.0
-            if hs_ is None: hs_ = api_lines.get(g.game_id, (None,))[0]
-        elif g.completed and through - 2 <= g.week <= through:
-            hs_ = lines.get(g.game_id, (None, None))[0]; wt = {0: 0.7, 1: 0.5, 2: 0.35}[through - g.week]
-        elif (not g.completed) and next_wk_ is not None and g.week == next_wk_:
-            hs_ = api_lines.get(g.game_id, (None,))[0]; wt = 1.0
-        else:
-            continue
-        if hs_ is not None and g.home_team in idx and g.away_team in idx:
-            mk_rows.append((idx[g.home_team], idx[g.away_team], -float(hs_) - (0.0 if g.neutral_site else HFA), wt))
-    mkt = {}
-    if len(mk_rows) > len(teams):
-        Xm = np.zeros((len(mk_rows), len(teams))); ym = np.zeros(len(mk_rows)); wm = np.zeros(len(mk_rows))
-        for i_, (hi_, ai_, y_, w_) in enumerate(mk_rows):
-            Xm[i_, hi_] = 1.0; Xm[i_, ai_] = -1.0; ym[i_] = y_; wm[i_] = w_
-        bm = ridge(Xm, ym, wm, 0.3, 0)
-        cnt = np.abs(Xm).sum(axis=0)
-        bm = bm - bm[cnt >= 2].mean()
-        mkt = {t: round(float(bm[idx[t]]), 1) for t in teams if cnt[idx[t]] >= 2}
 
     out_teams = []
     for t in teams:
@@ -811,18 +849,16 @@ def build(prev_path=None):
             "c": CONF_SHORT.get(c, c), "tier": tier, "col": col if isinstance(col, str) else "#888888",
             "alt": alt if isinstance(alt, str) else None, "lg": int(lg_.group(1)) if lg_ else None,
             "w": rec_now[t][0], "l": rec_now[t][1], "cw": rec_now[t][2], "cl": rec_now[t][3],
-            "z": {"res": round(float(R.res_z[t]), 4), "off": round(float(eff.off_z[t]), 4),
-                  "def": round(float(eff.def_z[t]), 4), "cmp": round(float(R.cmp_z[t]), 4)},
+            "z": {"res": round(float(R.res_z[t]), 4), "off": round(float(R.off_z[t]), 4), "def": round(float(R.def_z[t]), 4),
+                  "mar": round(float(R.mar_z[t]), 4), "h1": round(float(R.h1_z[t]), 4)},
             "d": {"sor": round(float(R.sor[t]) * 100, 1), "qw": R.qlist[t], "bl": round(float(R.bl[t]), 2),
-                  "sos": round(float(R.sos[t]) * 100, 1), "mar": round(float(mar[t]), 1),
-                  "elo": int(round(R.elo[t])), "pw": round(float(pw[t]), 2), "apr": ap_rank.get(t),
-                  **{k3: round(float(R[k3][t]), 1) for k3 in ("sp", "fpi", "srs") if k3 in R and pd.notna(R[k3][t])},
+                  "sos": round(float(R.sos[t]) * 100, 1), "mar": round(float(mar[t]), 1), "h1": round(float(h1[t]), 1),
+                  "pw": round(float(pw[t]), 2), "apr": ap_rank.get(t),
                   "st": round(float(eff.st[t]), 2), "dpg": round(float(eff.dpg[t]), 2),
                   "oru": round(float(eff.o_ru[t]), 3), "dru": round(float(eff.d_ru[t]), 3), "opa": round(float(eff.o_pa[t]), 3), "dpa": round(float(eff.d_pa[t]), 3),
                   "osd": round(float(eff.o_sdn[t]) * 100, 1), "dsd": round(float(eff.d_sdn[t]) * 100, 1), "opd": round(float(eff.o_pdn[t]) * 100, 1), "dpd": round(float(eff.d_pdn[t]) * 100, 1),
                   "lk": {"fum": round(float(eff.fum_luck[t]), 2), "int": round(float(eff.int_luck[t]), 2), "fg": round(float(eff.fg_luck[t]), 2),
                          "fg_": [int(eff.fum_got[t]), int(eff.fum_all[t])], "ofg": [int(eff.opp_fgm[t]), int(eff.opp_fga[t])], "cl": close.get(t, [0, 0])},
-                  "mkt": mkt.get(t),
                   "oppo": round(float(eff.o_ppo[t]), 2), "dppo": round(float(eff.d_ppo[t]), 2),
                   "oyds": round(float(eff.o_yds[t]), 1), "dyds": round(float(eff.d_yds[t]), 1),
                   "stop": round(float(eff.d_stop[t]) * 100, 1),
@@ -839,85 +875,101 @@ def build(prev_path=None):
     games = []
     for g in sched.sort_values(["week", "start_date"]).itertuples():
         fin = bool(g.completed) and pd.notna(g.home_points)
-        if fin:
-            hs, ou = lines.get(g.game_id, (None, None))
-        else:
-            hs, ou, _ = api_lines.get(g.game_id, (None, None, None))
-            ou = float(ou) if ou else None
+        # The betting line is kept for finished games only, as a yardstick on the scorecard. Lines for games still to be
+        # played are not put on the site.
         games.append({"id": int(g.game_id), "w": int(g.week), "d": g.start_date, "h": g.home_team, "a": g.away_team,
                       "n": bool(g.neutral_site), "c": bool(g.conference_game), "tbd": bool(g.start_time_tbd) and not fin,
                       "hp": int(g.home_points) if fin else None, "ap": int(g.away_points) if fin else None,
-                      "hs": hs, "ou": ou, "ho": open_lines.get(g.game_id, (None, None))[0],
-                      "oo": (lambda v: float(v) if v else None)(open_lines.get(g.game_id, (None, None))[1])})
+                      "hs": lines.get(g.game_id, (None, None))[0] if fin else None})
 
-    pre_ = {}      # the Elo each team carried into the season, for the breakout watch list
-    for g_ in sched[(sched.home_division == "fbs") & (sched.away_division == "fbs")].sort_values(["week", "start_date"]).itertuples():
-        for nm_, e_ in ((g_.home_team, g_.home_pregame_elo), (g_.away_team, g_.away_pregame_elo)):
-            if nm_ not in pre_ and pd.notna(e_): pre_[nm_] = int(round(float(e_)))
-    for ot_ in out_teams: ot_["d"]["pe"] = pre_.get(ot_["n"])
-    model = json.load(open(MODEL)) if os.path.exists(MODEL) else None
-    if model:      # where each team stood at the end of last season, by the model's power rating, for the program trend on the momentum page
-        pr_ = sorted(((v_["pw"], t_) for t_, v_ in model["prior"].items() if t_ in set(teams)), reverse=True)
-        ly_ = {t_: i_ + 1 for i_, (_, t_) in enumerate(pr_)}
-        for ot_ in out_teams: ot_["d"]["ly"] = ly_.get(ot_["n"])
     by_id = {p_["id"]: dict(p_) for p_ in (prev.get("picks", []) if prev else [])}
     for p_ in (ledger.get("picks", []) if ledger else []):
-        by_id[p_["id"]] = {**by_id.get(p_["id"], {}), **p_}
+        by_id[p_["id"]] = merge_pick(by_id.get(p_["id"], {}), p_) if p_["id"] in by_id else dict(p_)
     picks = sorted(by_id.values(), key=lambda q_: (q_["w"], q_["id"]))
+    for q_ in picks:
+        for k_ in RETIRED_KEYS:
+            q_.pop(k_, None)
     now_ = now_utc()
     kick = {int(g_.game_id): pd.Timestamp(g_.start_date) for g_ in sched.itertuples()}
     unplayed = lambda gid: gid in kick and kick[gid] > now_          # nothing goes on file once a game has kicked off
-    if model and next_week is not None:
-        tg = sched[(~sched.completed) & (sched.week == next_week) & (sched.home_division == "fbs") & (sched.away_division == "fbs")]
-        preds = model_predict(model, sched, eff, mar, fbs, tg)
-        seen = {p_["id"] for p_ in picks}
-        fresh = []
-        for gm in games:
-            if gm["id"] in preds:
-                gm["mm"], gm["mt"] = round(float(preds[gm["id"]][0]), 1), round(float(preds[gm["id"]][1]), 1)
-                # lock the model's view against the line available today, once, the first time a game has both
-                if gm["id"] not in seen and gm["hs"] is not None and unplayed(gm["id"]):
-                    fresh.append({"id": gm["id"], "w": gm["w"], "at": today_et(), "hs": gm["hs"], "ho": gm["ho"],
-                                  "ou": gm["ou"], "oo": gm["oo"], "mm": gm["mm"], "mt": gm["mt"], "v": 1})
-        # the totals model runs high or low as scoring changes from year to year, so measure that lean
-        # against the market on every game logged so far and take it out before comparing
-        both = [q_ for q_ in picks + fresh if q_.get("ou") is not None and q_.get("mt") is not None]
-        lean = round(float(np.mean([q_["mt"] - q_["ou"] for q_ in both])), 2) if both else 0.0
-        for q_ in fresh:
-            q_["tb"] = lean
-        picks += fresh
 
-    # The scorecard: what LTF, SP+ and FPI each say about a game, put on file before kickoff and never changed after.
-    # Each is a margin for the home team in points, home field included. A game already on file gets these added only
-    # while it is still unplayed. Nothing is ever written for a game that has kicked off.
+    # The scorecard: what LTF says about each of next week's games, put on file before kickoff and never changed after,
+    # with what SP+ and FPI say about the same game. Each is a margin for the home team in points, home field included.
+    # A game goes on file once, the first time it is seen unplayed. Nothing is ever written for a game that has kicked off.
+    # A number made under an earlier version of the formula is refiled under today's while the game is still unplayed. The
+    # earlier number, its date and its version stay in the entry under "was", and "rf" is the moment of the refile.
     if next_week is not None:
-        ltf_z = z(0.20 * R.res_z + 0.25 * eff.off_z.reindex(R.index) + 0.25 * eff.def_z.reindex(R.index) + 0.30 * R.cmp_z)
         slope_now = SLOPE[min(max(through, min(SLOPE)), max(SLOPE))]
-        open_ids = {int(g_.game_id): g_ for g_ in sched[~sched.completed].itertuples()}
         today_ = today_et()
-        for q_ in picks:
-            g_ = open_ids.get(q_["id"])
-            if g_ is None or "lm" in q_ or not unplayed(q_["id"]) or g_.home_team not in ltf_z.index or g_.away_team not in ltf_z.index:
+        tg = sched[(~sched.completed) & (sched.week == next_week) & (sched.home_division == "fbs") & (sched.away_division == "fbs")]
+        on_file = {p_["id"]: p_ for p_ in picks}
+        refiled = 0
+        for g_ in tg.itertuples():
+            gid = int(g_.game_id)
+            if not unplayed(gid) or g_.home_team not in R.index or g_.away_team not in R.index:
                 continue
             hf_ = 0.0 if bool(g_.neutral_site) else HFA
-            q_["lm"] = round(float(slope_now * (ltf_z[g_.home_team] - ltf_z[g_.away_team]) + hf_), 1)
-            for key_, col_ in (("sp", "sp"), ("fp", "fpi")):
-                if col_ in R and pd.notna(R[col_][g_.home_team]) and pd.notna(R[col_][g_.away_team]):
-                    q_[key_] = round(float(R[col_][g_.home_team] - R[col_][g_.away_team] + hf_), 1)
-            q_["sa"] = today_
+            q_ = on_file.get(gid)
+            lm_ = round(float(slope_now * (R.idx_z[g_.home_team] - R.idx_z[g_.away_team]) + hf_), 1)
+            if q_ is None:
+                q_ = {"id": gid, "w": int(g_.week), "at": today_, "f": FORMULA, "lm": lm_}
+                picks.append(q_)
+            elif q_.get("f", 1) != FORMULA:
+                if q_.get("lm") is not None:
+                    q_["was"] = list(q_.get("was", [])) + [{"f": q_.get("f", 1), "lm": q_["lm"], "at": q_.get("at")}]
+                q_.update({"lm": lm_, "at": today_, "f": FORMULA, "rf": now_.strftime("%Y-%m-%dT%H:%MZ")})
+                refiled += 1
+            for key_, col_ in (("sp", "sp"), ("fp", "fpi")):      # added if the outside rating was not there yet. A number already on file is never touched.
+                if key_ not in q_ and col_ in out_rate and pd.notna(out_rate[col_][g_.home_team]) and pd.notna(out_rate[col_][g_.away_team]):
+                    q_[key_] = round(float(out_rate[col_][g_.home_team] - out_rate[col_][g_.away_team] + hf_), 1)
+        picks.sort(key=lambda q_: (q_["w"], q_["id"]))
+        if refiled:
+            print(f"refiled {refiled} numbers under formula {FORMULA}, before kickoff")
+
+    # Buying and selling. The lists for the week just finished go on file before each team's next game and are never
+    # changed after. A team whose next game had already kicked off cannot go on file, and the weeks from before the lists
+    # were kept are rebuilt from the games played to that point. Both are marked "rb" and stay out of the ledger.
+    filed = {}
+    for src_ in (prev, ledger):
+        for q_ in (src_.get("calls", []) if src_ else []):
+            if not q_.get("rb"):
+                filed[(q_["w"], q_["t"])] = dict(q_)
+    calls, new_calls = [], 0
+    for W in sorted(idx_week):
+        if W < 3:
+            continue
+        for q_ in buy_sell(sched, W, idx_week[W], SLOPE[min(max(W, min(SLOPE)), max(SLOPE))]):
+            key_ = (W, q_["t"])
+            if key_ in filed:
+                continue
+            q_ = {"w": W, **q_}
+            if W == through and unplayed(q_["g"][0][0]):
+                q_.update({"at": today_et(), "f": FORMULA, "ft": now_.strftime("%Y-%m-%dT%H:%MZ")})
+                filed[key_] = q_
+                new_calls += 1
+            else:
+                calls.append({**q_, "rb": 1})
+    calls = sorted(list(filed.values()) + calls, key=lambda q_: (q_["w"], q_["k"] != "sell", -abs(q_["x"] - len(q_["g"]) / 2), q_["t"]))
+    if new_calls:
+        print(f"buying and selling: {new_calls} calls put on file for the week after week {through}")
+
+    # League strength, as the scoring-margin fit found it this season: points a game for the power tier over everyone
+    # else, and each league's own level on top of its tier. Shown on the League strength page.
+    lv = P["levels"] or {"tier": 0.0, "league": {}}
+    leagues = {"tier": round(lv["tier"], 2), "league": {CONF_SHORT.get(c_, c_): round(v_, 2) for c_, v_ in lv["league"].items()}}
 
     last = sched[sched.completed & sched.home_points.notna()].start_date.max()
     last_local = pd.Timestamp(last).tz_convert("America/New_York")
     data = {
         "meta": {"season": SEASON, "through": through, "next": next_week, "lastGame": last, "lastLabel": f"{last_local.strftime('%b')} {last_local.day}", "fcs": FCS_RATING,
                  "built": today_et(), "builtAt": now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"), "hfa": HFA, "sigma": SIGMA,
-                 "ref": round(ref, 2), "k": round(k, 2), "games": int(len(done)),
-                 "lined": int(sum(1 for g in done.game_id if lines.get(g, (None,))[0] is not None)),
-                 "book": "DraftKings", "cmpSrc": list(cmp_src), "apWeek": ap_week,
-                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "research": RESEARCH, "mom": MOMENTUM, "brk": BREAKOUT, "agree": AGREE, "prior": (model.get("prior_season") if model else None), "model": ({"trained": model["trained_on"], "games": model["games"], "version": 1} if model else None), "lastWeek": int(sched.week.max()),
-                 "api": bool(api), "talent": bool(A.get("talent")),
+                 "ref": round(ref, 2), "k": round(k, 2), "games": int(len(done)), "fbsGames": int(len(P["fbs"])),
+                 "lined": int(sum(1 for g in P["fbs"].game_id if lines.get(g, (None,))[0] is not None)),
+                 "book": "DraftKings", "apWeek": ap_week, "wt": WEIGHTS, "formula": FORMULA, "leagues": leagues,
+                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "mom": MOMENTUM, "lgc": LEAGUE_CHECK, "bs": BUYSELL,
+                 "lastWeek": int(sched.week.max()), "api": bool(api),
                  "pulled": (lambda d: f"{d.strftime('%b')} {d.day}")(pd.Timestamp(api["pulledAt"]).tz_convert("America/New_York")) if api else None},
-        "teams": out_teams, "games": games, "picks": picks,
+        "teams": out_teams, "games": games, "picks": picks, "calls": calls,
     }
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, separators=(",", ":"), ensure_ascii=False)
