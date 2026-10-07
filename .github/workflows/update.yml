@@ -91,7 +91,7 @@ jobs:
           if [ -f ledger.json ]; then cp ledger.json ledger.before.json; fi
           # A second copy of everything on file sits inside the live site. Reading it back means a wrong
           # upload of an old ledger.json cannot lose a pick. On the very first run there is no live site yet.
-          curl -fsSL --max-time 60 "$SITE/index.html" -o live.html || rm -f live.html
+          curl -fsSL --max-time 60 "$SITE/data.js" -o live.html || curl -fsSL --max-time 60 "$SITE/index.html" -o live.html || rm -f live.html
           if [ -s live.html ]; then python build_data.py --refresh --prev live.html; else python build_data.py --refresh; fi
 
       - name: Get team logos
@@ -102,7 +102,11 @@ jobs:
 
       - name: Put the site together
         id: make
-        run: python make_site.py --url "${{ steps.pages.outputs.base_url }}" --logos "${{ vars.LOGOS == 'off' && 'off' || 'on' }}"
+        env:
+          SITE: ${{ steps.pages.outputs.base_url }}
+          LOGOS: ${{ vars.LOGOS == 'off' && 'off' || 'on' }}
+          COUNTER: ${{ vars.GOATCOUNTER }}
+        run: python make_site.py --url "$SITE" --logos "$LOGOS" ${COUNTER:+--counter "$COUNTER"}
 
       - name: Check the site before it goes live
         id: check
