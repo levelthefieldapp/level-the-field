@@ -1,6 +1,6 @@
 # Level the Field: the automatic update.
 #
-# Twice a day in season this gets fresh scores, lines and ratings, rebuilds the site, checks it, and publishes it.
+# Twice a day in season this gets fresh scores and play-by-play, rebuilds the site, checks it, and publishes it.
 # If any step fails, nothing is published, the site keeps showing the last good version, and the owner gets an email.
 #
 # The CollegeFootballData key is read from the repository secret named CFBD_API_KEY. It is never written to a file.
@@ -77,7 +77,7 @@ jobs:
         id: libs
         run: pip install --quiet -r requirements.txt
 
-      - name: Get lines and ratings
+      - name: Get the comparisons
         id: api
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
@@ -122,7 +122,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Nothing new to save."
           else
-            git commit --quiet -m "Daily update: picks on file and weekly ratings"
+            git commit --quiet -m "Daily update: picks on file"
             git push --quiet || (git pull --quiet --rebase && git push --quiet)
           fi
 
@@ -200,7 +200,7 @@ jobs:
           elif [ "$S_PAGES" = failure ];   then what="finding the site's address"; hint="GitHub Pages is not switched on for this repository. Go to Settings, then Pages, and set Source to GitHub Actions."
           elif [ "$S_PYTHON" = failure ];  then what="setting up Python"
           elif [ "$S_LIBS" = failure ];    then what="installing the libraries"
-          elif [ "$S_API" = failure ];     then what="getting lines and ratings from CollegeFootballData"; hint="If this repeats, the key may have been rejected or the month's call limit reached. The run log says which."
+          elif [ "$S_API" = failure ];     then what="getting the AP poll, SP+, FPI and closing lines from CollegeFootballData"; hint="CollegeFootballData rejected the key. Check the secret named CFBD_API_KEY under Settings, then Secrets and variables, then Actions."
           elif [ "$S_BUILD" = failure ];   then what="getting scores and rebuilding the numbers"; hint="The public data files may have been mid-update. If this repeats three times in a row, send the run log to Claude."
           elif [ "$S_MAKE" = failure ];    then what="putting the site together"; hint="Send the run log to Claude."
           elif [ "$S_CHECK" = failure ];   then what="the check before going live"; hint="The check found something wrong with the new version and refused to publish it. Send the run log to Claude."
