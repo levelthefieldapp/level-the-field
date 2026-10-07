@@ -94,3 +94,65 @@ function teamBuySell(t){
   const gs = bsGames(c);
   return `<p class="next"><b>${c.k === 'sell' ? 'Selling' : 'Buying'}.</b> They have ${bsStreak(c)}, and LTF expects ${c.x.toFixed(1)} wins in their next ${NUMW[c.g.length] || c.g.length} games: ${list(gs.map(bsGameTxt))}. <a class="txt" href="${L('buysell')}">Buying and selling</a></p>`;
 }
+
+/* ================= against the line ================= */
+/* A benchmark and nothing more: where LTF and the closing betting line disagreed on a finished game, and who turned out
+   right. The line is the hardest yardstick there is. It is never part of the LTF Index, and the site shows no line for a
+   game that has not been played, so nothing on this page can be used ahead of a game. "Edge" is how far the LTF line sat
+   from the betting line, named for the team LTF rated higher than the line did. */
+const VSPAST = M.vs || null;
+let _vs = null;
+function vsLine(){
+  if (_vs) return _vs;
+  return _vs = scoreRows().filter(r => r.pred.mkt != null).map(r => {
+    const g = r.g, lt = r.pred.ltf, mk = r.pred.mkt, gap = lt - mk, side = gap > 0 ? g.h : g.a, res = (r.act - mk) * Math.sign(gap);
+    const split = lt !== 0 && mk !== 0 && r.act !== 0 && (lt > 0) !== (mk > 0), winner = r.act > 0 ? g.h : g.a;
+    return {g, act: r.act, lt, mk, gap, side, split, winner, locked: r.locked, ltfPick: lt > 0 ? g.h : g.a, linePick: mk > 0 ? g.h : g.a, ltfRight: (lt > 0) === (r.act > 0),
+      beat: gap === 0 || res === 0 ? null : res > 0, closer: Math.abs(r.act - lt) < Math.abs(r.act - mk), el: Math.abs(r.act - lt), em: Math.abs(r.act - mk)};
+  });
+}
+const vsM = (g, m, full) => half(m) === 0 ? (full ? "the game a pick 'em" : "Pick 'em") : `${esc(full ? (m > 0 ? g.h : g.a) : (m > 0 ? byName[g.h] : byName[g.a]).ab)} by ${half(m)}`;      // a margin for the home team, written the way a line is
+const vsCount = rows => { const s = rows.filter(r => r.split), b = rows.filter(r => r.beat != null);
+  return {n: rows.length, split: s.length, sw: s.filter(r => r.ltfRight).length, bw: b.filter(r => r.beat).length, bn: b.length, closer: rows.filter(r => r.closer).length}; };
+function viewVsLine(){
+  const dek = `Where LTF and the betting line disagreed, and who turned out right. The line is the hardest yardstick there is, so this is a benchmark and nothing more. It covers finished games only. The site never shows a line for a game that has not been played.`;
+  const all = vsLine(), P = VSPAST;
+  const pastRows = !P ? '' : P.gaps.map(q => `<tr><th scope="row">${q.lo ? `Lines ${q.lo} or more points apart` : 'Every game'}</th><td class="num wide">${q.n.toLocaleString()}</td><td class="num"><b>${f1(q.beat)}%</b> <span class="cf">${q.w.toLocaleString()}-${q.l.toLocaleString()}</span></td><td class="num">${f1(q.closer)}%</td></tr>`).join('');
+  const past = !P ? '' : `<section class="sec"><h2>What past seasons say</h2><p class="hint">The LTF Index rebuilt week by week for ${P.seasons}, against the closing line on ${P.games.toLocaleString()} games.</p>
+      <div class="facts">${fact('Different winners', `${P.split.w}-${P.split.l}`, `LTF's team won ${f1(P.split.pct)}% of ${P.split.n} games. Over half in ${P.split.seasons} of ${P.split.of} seasons`)}
+        ${fact('Through week 7', f1(P.split.early.pct) + '%', `${P.split.early.w}-${P.split.early.l} when the two picked different winners`)}
+        ${fact('Week 8 on', f1(P.split.late.pct) + '%', `${P.split.late.w}-${P.split.late.l}, level with the line`)}</div>
+      <div class="scroll"><table class="grid"><thead><tr><th>Games</th><th class="num wide">Count</th><th class="num">LTF's side beat the line</th><th class="num">LTF was closer</th></tr></thead><tbody>${pastRows}</tbody></table></div>
+      <p class="hint after">"LTF's side" is the team LTF rated higher than the line did. They beat the line when the final margin landed on their side of it. Half is a coin flip, and that is where LTF sits however far apart the two lines were. The line is closer to the final margin more often because it knows about injuries and lineups, and early in the season it also knows about earlier seasons. LTF knows this season's games and nothing else.</p></section>`;
+  if (!all.length) return {title:'Against the line', top: pageTop('Against the line', dek), body: `<p class="empty">No finished game has both an LTF line and a closing betting line yet.</p>${past}${lineNote}`};
+  const weeks = [...new Set(all.map(r => r.g.w))].sort((a,b) => a-b), wk = weeks.includes(+R.q.week) ? +R.q.week : null, rows = wk ? all.filter(r => r.g.w === wk) : all, c = vsCount(rows), ca = vsCount(all);
+  const seg = `<div class="seg" role="group" aria-label="Week"><a data-keep href="${Lq({week:null})}" aria-current="${!wk}">Season</a>${weeks.map(w => `<a data-keep href="${Lq({week:w})}" aria-current="${w === wk}">Week ${w}</a>`).join('')}</div>`;
+  const li = r => `<li class="two"><span><span class="l1"><a class="tlink" href="${gameL(r.g)}">${finalTxt(r.g)}</a><span class="meta">${esc(byName[r.side].ab)} +${Math.abs(r.gap).toFixed(1)}</span></span>
+    <span class="sub2">Week ${r.g.w}. LTF had ${vsM(r.g, r.lt, true)}. The betting line had ${vsM(r.g, r.mk, true)}.</span></span></li>`;
+  const won = rows.filter(r => r.split && r.ltfRight).sort((a,b) => Math.abs(b.mk) - Math.abs(a.mk)), lost = rows.filter(r => r.split && !r.ltfRight).sort((a,b) => Math.abs(b.lt) - Math.abs(a.lt));
+  const table = [...rows].filter(r => Math.abs(r.gap) >= 3).sort((a,b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, 40).map(r => `<tr><td class="num">${r.g.w}</td><td class="wrap2"><a class="tlink" href="${gameL(r.g)}">${finalTxt(r.g)}</a></td><td>${vsM(r.g, r.lt)}</td><td>${vsM(r.g, r.mk)}</td>
+      <td class="num">${esc(byName[r.side].ab)} +${Math.abs(r.gap).toFixed(1)}</td><td class="res ${r.beat ? 'up' : r.beat === false ? 'down' : ''}">${r.beat == null ? 'Even' : r.beat ? 'LTF\'s side' : 'The line\'s side'}</td><td class="num wide">${r.el.toFixed(1)}</td><td class="num wide">${r.em.toFixed(1)}</td></tr>`).join('');
+  const wkRows = weeks.map(w => { const q = vsCount(all.filter(r => r.g.w === w));
+    return `<tr><th scope="row"><a class="txt" data-keep href="${Lq({week:w})}">Week ${w}</a>${all.some(r => r.g.w === w && r.locked) ? '' : ' <span class="cf">LTF rebuilt</span>'}</th><td class="num">${q.n}</td><td class="num">${q.split}</td><td class="num"><b>${q.split ? `${q.sw}-${q.split - q.sw}` : '–'}</b></td><td class="num">${q.bn ? `${q.bw}-${q.bn - q.bw}` : '–'}</td><td class="num wide">${q.closer} of ${q.n}</td></tr>`; }).join('');
+  const pct = (a, b) => b ? Math.round(100*a/b) + '%' : '–';
+  return {title:'Against the line', lead: ca.split ? `When LTF and the betting line have picked different winners this season, LTF is ${ca.sw}-${ca.split - ca.sw}.` : `LTF and the betting line have picked the same winner in every game this season.`,
+    top: pageTop('Against the line', dek),
+    body: `${weeks.length > 1 ? seg : ''}<div class="facts">
+      ${fact('Different winners', c.split ? `${c.sw}-${c.split - c.sw}` : '–', c.split ? `LTF's team won ${pct(c.sw, c.split)} of the ${c.split} games where the two disagreed` : 'the two picked the same winner every time')}
+      ${fact('LTF\'s side beat the line', c.bn ? `${c.bw}-${c.bn - c.bw}` : '–', `${pct(c.bw, c.bn)}. Half is a coin flip`)}
+      ${fact('LTF was closer', `${c.closer} of ${c.n}`, `${pct(c.closer, c.n)} of games, on the final margin`)}
+      ${fact('Games', c.n, wk ? `week ${wk}` : `weeks ${weeks.join(', ')}`)}</div>
+    <div class="panels">
+      <section class="panel"><h2>Calls LTF won</h2><p class="hint">LTF and the line picked different winners, and LTF's team won. The biggest line against them comes first. The number is the edge: how many points LTF sat from the line, and toward which team.</p>${won.length ? `<ol class="rows">${won.slice(0,8).map(li).join('')}</ol>` : '<p class="hint">None in these games.</p>'}</section>
+      <section class="panel"><h2>Calls the line won</h2><p class="hint">The two picked different winners, and the line's team won. LTF's most confident misses come first.</p>${lost.length ? `<ol class="rows">${lost.slice(0,8).map(li).join('')}</ol>` : '<p class="hint">None in these games.</p>'}</section>
+    </div>
+    <section class="sec"><h2>Week by week</h2>
+      <div class="scroll"><table class="grid"><thead><tr><th>Week</th><th class="num">Games</th><th class="num">Different winners</th><th class="num">LTF's record in those</th><th class="num">LTF's side beat the line</th><th class="num wide">LTF was closer</th></tr></thead>
+      <tbody>${wkRows}${weeks.length > 1 ? `<tr class="tot"><th scope="row">Season</th><td class="num">${ca.n}</td><td class="num">${ca.split}</td><td class="num"><b>${ca.split ? `${ca.sw}-${ca.split - ca.sw}` : '–'}</b></td><td class="num">${ca.bw}-${ca.bn - ca.bw}</td><td class="num wide">${ca.closer} of ${ca.n}</td></tr>` : ''}</tbody></table></div>
+      <p class="hint after">"LTF rebuilt" marks weeks from before LTF numbers were put on file. Those lines are rebuilt from only the games played up to that week.</p></section>
+    <section class="sec"><h2>The biggest edges${wk ? `, week ${wk}` : ''}</h2><p class="hint">Finished games where the LTF line and the betting line were 3 or more points apart, widest first. The edge names the team LTF rated higher than the line did. The last two columns are how far each line finished from the real margin.</p>
+      <div class="scroll"><table class="grid"><thead><tr>${th('Wk','num')}${th('Final')}${th('LTF line','','line')}${th('Betting line','','market')}${th('Edge','num')}${th('Who was right')}${th('LTF miss','num wide')}${th('Line miss','num wide')}</tr></thead><tbody>${table || '<tr><td class="empty" colspan="8">No game had the two lines 3 or more points apart.</td></tr>'}</tbody></table></div></section>
+    ${past}
+    <div class="note"><p><b>Why this page exists.</b> People ask whether LTF beats the books. This is the honest answer, kept in one place: it does not, and it is not built to. LTF rates teams on this season's games alone. The line also prices in injuries, suspensions, quarterback changes and every earlier season.</p>
+      <p><b>What it is good for.</b> It shows where LTF sees a team differently from everyone else, and whether that view held up. The calls LTF won are the ones worth a second look when you build your own rankings.</p></div>` + lineNote};
+}

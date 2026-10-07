@@ -9,13 +9,13 @@ const SECTIONS = [
   {k:'games', label:'Games', pages:[['games','Scores and schedule'],['picks','Picks'],['upsets','Upset watch'],['buysell','Buying and selling'],['recap','Recap']]},
   {k:'teams', label:'Teams', pages:[['teams','All teams'],['stats','Stats'],['compare','Compare'],['blind','Blind résumé']]},
   {k:'playoff', label:'Playoff', pages:[['playoff','Bracket'],['odds','Season odds']]},
-  {k:'scorecard', label:'Track record', pages:[['scorecard','Scorecard'],['track','LTF track record'],['inputs','What goes in'],['how','How it works'],['about','About']]},
+  {k:'scorecard', label:'Track record', pages:[['scorecard','Scorecard'],['track','LTF track record'],['vsline','Against the line'],['inputs','What goes in'],['how','How it works'],['about','About']]},
 ];
 const PARENT = {team:'teams', game:'games', conference:'conferences', contact:'about'};      // a detail page lights up the page it sits under
 const ALLPAGES = [...SECTIONS.flatMap(s => s.pages), ['contact','Contact']];
 const sectionOf = page => SECTIONS.find(s => s.k === page || s.pages.some(p => p[0] === page)) || null;
 const VIEWS = {home:viewHome, rankings:viewRankings, teams:viewTeams, team:viewTeam, conferences:viewConferences, conference:viewConference,
-               games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, upsets:viewUpsets, buysell:viewBuySell, leagues:viewLeagues, inputs:viewInputs,
+               games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, upsets:viewUpsets, buysell:viewBuySell, vsline:viewVsLine, leagues:viewLeagues, inputs:viewInputs,
                track:viewTrack, weights:viewWeights, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
 const MOVED = {spread:'picks', model:'scorecard', reputation:'radar'};      // pages retired on October 7, 2026. An old link lands on the nearest page that is still here.
 function ribbon(){

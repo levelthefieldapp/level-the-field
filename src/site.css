@@ -156,6 +156,7 @@ a.txt,.more{display:inline-block;font-weight:650;text-decoration:underline;text-
 .controls select,.controls input,.ptools select{background:var(--surface);border:1px solid var(--muted);padding:8px 10px;font-size:1rem;color:var(--ink);min-width:150px}
 .seg{display:flex;max-width:100%;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--line);margin:4px 0 14px}
 .controls .seg{margin:0}
+.seg.wrap{flex-wrap:wrap;overflow:visible}
 .seg a{flex:none;padding:8px 14px 7px;font-weight:750;font-stretch:86%;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .seg a:hover{color:var(--ink)}
 .seg a[aria-current="true"]{color:var(--ink);border-bottom-color:var(--pylon)}

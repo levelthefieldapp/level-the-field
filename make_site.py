@@ -53,6 +53,7 @@ PAGES = {
     "odds": ("Season odds", "Each team's chance to make the playoff, win their conference and reach a bowl, from 2,500 simulated seasons."),
     "scorecard": ("Scorecard", "LTF graded every week next to SP+, FPI and the betting line, on the same games."),
     "track": ("LTF track record", "Every finished game where LTF had a line before kickoff, graded on the winner and the margin."),
+    "vsline": ("Against the line", "Where LTF and the betting line disagreed on finished games, and who turned out right. A benchmark, graded every week."),
     "inputs": ("What goes in, and what stays out", "Everything the LTF Index is built from, and everything it leaves out on purpose: polls, preseason rankings, earlier seasons and betting lines."),
     "how": ("How it works", "What goes into the LTF Index, how picks are made, and what testing has shown."),
     "about": ("About", "What Level the Field is and who it is for."),

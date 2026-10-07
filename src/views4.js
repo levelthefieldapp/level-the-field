@@ -53,6 +53,9 @@ function viewPicks(){
    on the Picks page as closest calls. "Alert" is a team in the LTF top 25 in that spot against a team from outside it.
    "Calls" are games where LTF picks against the AP poll, which is here only to compare against. */
 const UPSET = {lo:.25, hi:.45};
+/* The table of underdogs can be narrowed to a range of chances. The ranges are the ones graded on past seasons, so each
+   comes with how often underdogs like these have won. The default is the live range above. */
+const UPSET_BANDS = [['', 'Live, 25 to 45%', .25, .45], ['40', '40 to 50%', .40, .5001], ['30', '30 to 40%', .30, .40], ['20', '20 to 30%', .20, .30], ['10', '10 to 20%', .10, .20], ['0', 'Under 10%', 0, .10], ['all', 'Every underdog', 0, .5001]];
 function upsetWatch(wk){
   const games = wk == null ? [] : openGames(wk).filter(x => x.pr).map(x => {
     const h = byName[x.g.h], a = byName[x.g.a], fav = x.pr.m >= 0 ? h : a, dog = fav === h ? a : h, pFav = Math.max(x.pr.pHome, 1 - x.pr.pHome);
@@ -73,7 +76,9 @@ function viewUpsets(){
   const wk = fut.includes(+R.q.week) ? +R.q.week : M.next, uw = upsetWatch(wk), q = findText();
   const scope = arr => arr.filter(u => [u.fav, u.dog].some(inGroup) && (!q || u.fav.n.toLowerCase().includes(q) || u.dog.n.toLowerCase().includes(q)));
   const byChance = R.q.sort === 'chance', alert = scope(uw.alert), calls = scope(uw.calls), top = alert[0] || scope(uw.live)[0];
-  const live = byChance ? scope(uw.live) : scope(uw.live).sort((p, q2) => p.fav.rank - q2.fav.rank);      // the best-ranked favorites first, since those are the upsets people talk about
+  const band = UPSET_BANDS.find(b => b[0] === (R.q.chance || '')) || UPSET_BANDS[0], inBand = scope(uw.games.filter(u => u.pDog >= band[2] && u.pDog < band[3])).sort((p, q2) => q2.pDog - p.pDog);
+  const live = byChance ? inBand : [...inBand].sort((p, q2) => p.fav.rank - q2.fav.rank);      // the best-ranked favorites first, since those are the upsets people talk about
+  const hist = (BT.dog || []).find(b => band[0] !== '' && band[0] !== 'all' && b.lo === Math.round(band[2]*100));
   const ap = t => t.d.apr ? `AP No. ${t.d.apr}` : 'unranked by the AP';
   const callLi = u => `<li class="two"><span><span class="l1"><span class="who">${badge(u.fav,'sm')} <a class="tlink" href="${gameL(u.g)}">${esc(u.fav.n)} over ${esc(u.dog.n)}</a></span><span class="meta"><b class="cnum">${Math.round((1-u.pDog)*100)}%</b></span></span>
     <span class="sub2">LTF has ${esc(u.fav.n)} by ${u.pr.pts}${u.g.n ? ' at a neutral site' : u.fav.n === u.g.h ? ' at home' : ' on the road'}. They are ${ap(u.fav)}, and ${esc(u.dog.n)} is ${ap(u.dog)}. LTF ranks them No. ${u.fav.rank} and No. ${u.dog.rank}.</span></span></li>`;
@@ -88,9 +93,11 @@ function viewUpsets(){
       <section class="panel"><h2>Top 25 teams on upset alert</h2><p class="hint">LTF top 25 teams favored over a team from outside it, with the underdog given a real chance. The number is the underdog's chance.</p>${alert.length ? `<ol class="rows">${alert.slice(0,8).map(upsetLi).join('')}</ol>` : '<p class="hint">None this week. No top 25 team is in real danger against a team from outside it.</p>'}</section>
       ${M.apWeek != null ? `<section class="panel"><h2>Where LTF picks against the poll</h2><p class="hint">Games where LTF favors the team the AP poll has lower. The number is the chance the LTF pick wins. The poll is here only to compare against.</p>${calls.length ? `<ol class="rows">${calls.slice(0,8).map(callLi).join('')}</ol>` : '<p class="hint">None this week. LTF and the AP poll favor the same team in every game between ranked teams.</p>'}</section>` : ''}
     </div>
-    <section class="sec"><h2>Every live underdog</h2><p class="hint">Underdogs LTF gives between ${Math.round(UPSET.lo*100)}% and ${Math.round(UPSET.hi*100)}%. Anything closer is a toss-up and sits with the <a class="txt" href="${L('picks', null, {week: wk === M.next ? null : wk})}">closest calls</a>. The small numbers are LTF ranks.</p>
+    <section class="sec"><h2>${band[0] === '' ? 'Every live underdog' : band[0] === 'all' ? 'Every underdog' : `Underdogs with ${band[0] === '0' ? 'under a 10%' : `a ${band[1]}`} chance`}</h2>
+      <div class="seg wrap" role="group" aria-label="Chance to win">${UPSET_BANDS.map(b => `<a data-keep href="${Lq({chance: b[0] || null})}" aria-current="${b === band}">${b[1]}</a>`).join('')}</div>
+      <p class="hint">${band[0] === '' ? `Underdogs LTF gives between ${Math.round(UPSET.lo*100)}% and ${Math.round(UPSET.hi*100)}%. Anything closer is a toss-up and sits with the <a class="txt" href="${L('picks', null, {week: wk === M.next ? null : wk})}">closest calls</a>.` : band[0] === 'all' ? 'Every game this week, from the underdog\'s side.' : `${live.length} ${live.length === 1 ? 'underdog' : 'underdogs'} in this range in week ${wk}.${hist ? ` In past seasons, underdogs LTF put in this range won ${f1(hist.act)}% of the time, across ${hist.n.toLocaleString()} games.` : ''}`} Pick a range to narrow the list. The small numbers are LTF ranks.</p>
       <div class="seg" role="group" aria-label="Order"><a data-keep href="${Lq({sort:null})}" aria-current="${!byChance}">Best favorites first</a><a data-keep href="${Lq({sort:'chance'})}" aria-current="${byChance}">Best chance first</a></div>
-      <div class="scroll"><table class="grid wk"><thead><tr>${th('Date','wide')}${th('Underdog and favorite')}${th('Underdog','num wide','rec')}${th('Favorite','num wide','rec')}${th('LTF line','wide','line')}${th('Underdog wins','','wc')}</tr></thead><tbody>${rows || '<tr><td class="empty" colspan="6">No underdog is on the watch in these games.</td></tr>'}</tbody></table></div></section>
+      <div class="scroll"><table class="grid wk"><thead><tr>${th('Date','wide')}${th('Underdog and favorite')}${th('Underdog','num wide','rec')}${th('Favorite','num wide','rec')}${th('LTF line','wide','line')}${th('Underdog wins','','wc')}</tr></thead><tbody>${rows || `<tr><td class="empty" colspan="6">${band[0] === '' ? 'No underdog is on the watch in these games.' : 'No underdog falls in this range in these games.'}</td></tr>`}</tbody></table></div></section>
     ${dogRows ? `<section class="sec"><h2>How often underdogs win</h2><p class="hint">The LTF Index rebuilt week by week for ${BT.seasons}, ${BT.games.toLocaleString()} games. When LTF gave an underdog a chance in the range on the left, this is how often they won.</p>
       <div class="scroll"><table class="grid"><thead><tr><th>Chance LTF gave the underdog</th><th class="num">Underdog won</th><th class="num wide">Average chance given</th><th class="num">Games</th></tr></thead><tbody>${dogRows}</tbody></table></div>
       <p class="hint after">About ${dog[0] ? Math.round(dog[0].act) : 45} of every 100 near coin-flip underdogs win, so picking a few of them is not reckless. An underdog under 20% is a long shot, and most weeks one of those wins anyway.</p></section>` : ''}
