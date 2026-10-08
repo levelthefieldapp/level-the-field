@@ -76,7 +76,7 @@ function viewRadar(){
   }
   const g6rows = br.filter(t => t.tier==='G6').slice(0,15).map((t,i) => `<tr><td class="num rk">${i+1}</td><td class="num nat">${t.rank}</td>${teamCell(t)}<td class="num wide">${lastWeek(t)}</td><td class="num">${t.w}-${t.l}</td><td class="num">${t.idx.toFixed(1)}</td><td class="num">${wl(t.g.filter(g => byName[g.opp] && byName[g.opp].tier==='P4'))}</td><td class="wide">${bestWin(t)}</td></tr>`).join('');
   const miss25 = M.apWeek != null ? br.filter(t => !t.d.apr && t.rank <= 25) : [];
-  return {title:'Under the radar', card:'polls', lead: miss25.length ? `${tl(miss25[0])} is No. ${miss25[0].rank} here and unranked by the AP. ${miss25.length === 1 ? 'They are the only team' : `${miss25.length} teams`} in the LTF top 25 ${miss25.length === 1 ? '' : 'are '}outside the poll.` : '',
+  return {title:'Under the radar', card: radarCard() ? 'radar' : 'top10:g6', alts: [['radar', 'Left out of the poll'], ['polls', 'LTF vs the AP poll'], ['top10:g6', 'Group of 6 Top 10']], lead: miss25.length ? `${tl(miss25[0])} is No. ${miss25[0].rank} here and unranked by the AP. ${miss25.length === 1 ? 'They are the only team' : `${miss25.length} teams`} in the LTF top 25 ${miss25.length === 1 ? '' : 'are '}outside the poll.` : '',
     top: pageTop('Under the radar', `LTF does not know a team's reputation or where anyone was ranked in August. It goes by this season's games, so this page collects the teams that get less attention than their play deserves. The AP poll is here only to compare against. It is never part of the score.`),
     body: `${ap}
     <section class="sec"><h2>Group of 6 leaders</h2><p class="hint">The top Group of 6 teams, where they stand nationally, and how they have done against Power 4 opponents.</p>

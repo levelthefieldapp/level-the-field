@@ -221,8 +221,10 @@ function breakdown(g){   // bars showing where the line comes from
     <div class="bd tot"><span class="bn">LTF line</span><span class="bt"></span><span class="bv">${lineTxt(x, true)}</span></div></div>`;
 }
 const form = t => t.g.slice(-3).map(e => `<span class="fm ${e.pf>e.pa?'w':'l'}" title="${e.pf>e.pa?'Beat':'Lost to'} ${esc(e.opp)} ${scoreTxt(e)}">${e.pf>e.pa?'W':'L'}</span>`).join('');
-const moveWords = mv => !mv ? '<span class="mv same">same</span>' : `<span class="mv ${mv>0?'up':'down'}">${mv>0?'up':'down'} ${Math.abs(mv)}</span>`;
-const lastWeek = t => t.prevRank == null ? '\u2013' : `${t.prevRank}, ${moveWords(t.move)}`;
+/* movement as a chip: an arrow and the number of spots, green up, red down. The words are there for screen readers. */
+const moveWords = (mv, was) => !mv ? `<span class="mv same"${was != null ? ` title="No. ${was} last week"` : ''}>same</span>`
+  : `<span class="mv ${mv>0?'up':'down'}"${was != null ? ` title="Was No. ${was} last week"` : ''}><span aria-hidden="true">${mv>0?'\u25B2':'\u25BC'}</span> ${Math.abs(mv)}<span class="sr"> ${mv>0?'up':'down'}${was != null ? `, was No. ${was}` : ''}</span></span>`;
+const lastWeek = t => t.prevRank == null ? '\u2013' : moveWords(t.move, t.prevRank);
 function suRecord(){   // how LTF's favorite has done straight up this season, where it had a line before kickoff
   let w = 0, n = 0;
   for (const g of G){ if (!g.done) continue; const x = gameLine(g); if (!x) continue; n++; if ((x.m > 0) === (g.hp > g.ap)) w++; }

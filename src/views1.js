@@ -32,24 +32,25 @@ const sortState = defKey => ({key: R.q.sort || defKey, dir: R.q.dir === 'asc' ? 
 
 const h2hText = x => `Lost ${scoreTxt(x.g)} ${x.g.site==='H'?'at home to':x.g.site==='A'?'at':'at a neutral site to'} ${x.g.opp} (${x.o?'No. '+x.o.rank:'FCS'}) in week ${x.g.wk}.`;
 const h2hTag = t => !t.h2h.length ? '' : ` <span class="h2h" title="${esc(t.h2h.map(h2hText).join(' '))}">lost to ${t.h2h.map(x => x.o ? 'No. '+x.o.rank : 'an FCS team').join(', ')}</span>`;
-const teamCell = (t, tag) => `<th scope="row" class="team"><a class="teambtn" href="${teamL(t)}">${badge(t)}<span><span class="tn">${esc(t.n)}</span> <span class="cf">${esc(t.c)}</span>${tag ? h2hTag(t) : ''}</span></a></th>`;
-const mvTxt = t => !t.move ? '' : `<span class="mv ${t.move>0?'up':'down'}" title="${t.prevRank != null ? 'Was No. '+t.prevRank+' last week' : ''}">${t.move>0?'up':'down'} ${Math.abs(t.move)}</span>`;
+const teamCell = (t, tag, rec) => `<th scope="row" class="team"><a class="teambtn" href="${teamL(t)}">${badge(t)}<span><span class="tn">${esc(t.n)}</span> <span class="cf">${esc(t.c)}${rec ? `<span class="show480">, ${t.w}-${t.l}</span>` : ''}</span>${tag ? h2hTag(t) : ''}</span></a></th>`;
+const mvTxt = t => !t.move ? '' : moveWords(t.move, t.prevRank);
 const crumbs = items => `<nav class="crumbs" aria-label="Breadcrumb">${items.map((x,i) => (i ? '<span aria-hidden="true">/</span>' : '') + (x[1] ? `<a href="${x[1]}">${x[0]}</a>` : `<span>${x[0]}</span>`)).join('')}</nav>`;
 const pageTop = (title, dek, trail) => `${trail ? crumbs(trail) : ''}<div class="phead"><h1 class="ptitle">${title}</h1><!--share--></div><!--lead-->${dek ? `<!--about--><p class="pdek">${dek}</p>` : ''}`;
 /* A page can return three more things: `lead`, the takeaway in a sentence or two, shown before anything else. `card`, the
-   picture its Share button offers, with `alts` for other shapes. With a lead in place, a phone tucks the "how to read this
-   page" paragraph behind a link so the answer is what shows first. */
+   picture its Share button offers, with `alts` for other choices. The "how to read this page" paragraph, and any column
+   key, wait behind "About this page" so the answer is what shows first. */
 const fillTop = (top, v) => String(top || '')
-  .replace('<!--share-->', v.card && CARDS[v.card.split(':')[0]] ? shareBtn(v.card, null, null, v.alts) : '')
+  .replace('<!--share-->', v.card && okCard(v.card) ? shareBtn(v.card, null, null, okAlts(v.alts)) : '')
   .replace('<!--lead-->', v.lead ? `<p class="plead">${v.lead}</p>` : '')
-  .replace('<!--about-->', v.lead ? `<button type="button" class="pabout" data-about aria-expanded="false">About this page</button>` : '');
+  .replace('<!--about-->', `<button type="button" class="pabout" data-about aria-expanded="false">About this page</button>`);
 const rowB = (t, n, meta) => `<li class="b"><span class="pr">${n}</span>${badge(t,'sm')}<span>${tl(t)} <span class="cf">${t.w}-${t.l}</span></span><span class="meta">${meta}</span></li>`;
-const metaIdx = t => `${t.prevRank != null ? `<span class="cf">was ${t.prevRank},</span> ${moveWords(t.move)}` : ''} <b class="mnum">${t.idx.toFixed(1)}</b>`;
+const metaIdx = t => `${t.prevRank != null ? moveWords(t.move, t.prevRank) : ''} <b class="mnum">${t.idx.toFixed(1)}</b>`;
 const favs = () => { let a = store.get('ltf.favs'); if (!Array.isArray(a)){ const one = store.get('ltf.fav'); a = one ? [one] : []; } return a.map(sl => bySlug[sl]).filter(Boolean); };
 const wl = gs => gs.length ? `${gs.filter(g => g.pf>g.pa).length}-${gs.filter(g => g.pf<g.pa).length}` : '–';
 const nextGames = () => openGames(M.next);
 const emptyRow = (span, what) => `<tr><td class="empty" colspan="${span}">No ${what} matches "${esc(R.q.find || '')}". Clear the search box or pick a different group.</td></tr>`;
 const weekTabs = (weeks, wk, def, lab) => `<div class="weeks" role="group" aria-label="Week">${weeks.map(w => `<a data-keep href="${Lq({week: w === def ? null : w, sort:null, dir:null})}" aria-current="${w===wk}">Wk ${w}<small>${lab(w)}</small></a>`).join('')}</div>`;
+const dayName = iso => { const d = new Date(iso); return isNaN(d) ? 'Next' : d.toLocaleDateString('en-US', {weekday:'long', timeZone:'America/New_York'}); };
 const fact = (label, value, note) => `<div class="fact"><span>${label}</span><b>${value}</b>${note ? `<small>${note}</small>` : ''}</div>`;
 
 /* ================= home ================= */
@@ -60,11 +61,12 @@ function viewHome(){
   const firsts = COMP.filter(c => a.rk[c.k] === 1).map(c => c.name.toLowerCase());
   const ne = a.sched.find(e => !e.game.done), npr = ne && gameLine(ne.game);
   const nextUp = !ne ? 'The regular season is done.' : !npr ? `Next up: ${esc(ne.opp)}.` : `Next up: ${byName[ne.opp].rank <= 25 ? 'No. '+byName[ne.opp].rank+' ' : ''}${esc(ne.opp)}, where the LTF line is ${npr.pts===0 ? "a pick 'em" : esc(npr.fav.n)+' by '+npr.pts}.`;
+  const nextLine = !ne ? '' : `<a class="snext" href="${gameL(ne.game)}"><span><b>${ne.game.tbd ? 'Next' : esc(dayName(ne.game.d))}:</b> ${ne.site === 'A' ? 'at' : ne.site === 'N' ? 'vs' : 'vs'} ${byName[ne.opp] && byName[ne.opp].rank <= 25 ? 'No. '+byName[ne.opp].rank+' ' : ''}${esc(ne.opp)}${npr ? `, ${npr.pts===0 ? "a pick 'em" : esc(npr.fav.n)+' by '+npr.pts}` : ''}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></a>`;
   const lead = `<section class="story" style="--tc:${esc(a.col)};--tf:${a.fg}" data-ab="${esc(a.ab)}">
-      <p class="kick">${logosOn() ? badge(a,'md') : ''}LTF Index, after week ${M.through}</p><h1>${head}</h1>
-      <p class="dek">${a.w}-${a.l}${firsts.length ? `, and first in the country in ${list(firsts)}` : ''}. ${esc(b.n)} is second, ${gap.toFixed(1)} points back. ${nextUp}</p>
-      <div class="nums"><div><b>${a.idx.toFixed(1)}</b><span>LTF Index</span></div>${COMP.slice(0,3).map(c => `<div><b>${ord(a.rk[c.k])}</b><span>${c.name.toLowerCase()}</span></div>`).join('')}</div>
-      <a class="cta" href="${teamL(a)}">See ${esc(a.n)}'s full page</a></section>`;
+      <p class="kick">${logosOn() ? badge(a,'md') : ''}The LTF Index after week ${M.through}</p><h1>${head}</h1>
+      <p class="dek">${a.w}-${a.l}${firsts.length ? `, and first in the country in ${list(firsts)}` : ''}. ${esc(b.n)} is second, ${gap.toFixed(1)} points back.</p>
+      <div class="nums"><div class="big"><b>${a.idx.toFixed(1)}</b><span>LTF Index ${a.prevRank != null ? moveWords(a.move, a.prevRank) : ''}</span></div>${COMP.slice(0,3).map(c => `<div><b>${ord(a.rk[c.k])}</b><span>${c.name}</span></div>`).join('')}</div>
+      <div class="sacts"><a class="cta" href="${teamL(a)}">${esc(a.n)}'s page</a>${nextLine}</div></section>`;
   const top = br.slice(0,10).map(t => rowB(t, t.rank, metaIdx(t))).join('');
   const pool = T.filter(t => t.move && (t.rank <= 60 || t.prevRank <= 60));
   const riser = [...pool].filter(t => t.move > 0).sort((x,y) => y.move-x.move)[0];
@@ -76,7 +78,7 @@ function viewHome(){
     sleeper && tile(sleeper, 'Under the radar', `The polls are sleeping on ${esc(sleeper.n)}`, `${sleeper.w}-${sleeper.l} and No. ${sleeper.rank} here, but outside the AP Top 25.`, teamL(sleeper)),
     hotSeat && tile(hotSeat.dog, `Upset watch, week ${M.next}`, `${esc(hotSeat.dog.n)} has ${aPct(Math.round(hotSeat.pDog*100))} shot`, `${hotSeat.g.n ? 'Against' : hotSeat.dog.n === hotSeat.g.h ? 'At home against' : 'At'} No. ${hotSeat.fav.rank} ${esc(hotSeat.fav.n)}. LTF line: ${lineTxt(hotSeat.pr)}.`, L('upsets')),
   ].filter(Boolean).join('');
-  const mrow = t => rowB(t, t.rank, `<span class="cf">was ${t.prevRank},</span> ${moveWords(t.move)}`);
+  const mrow = t => rowB(t, t.rank, moveWords(t.move, t.prevRank));
   const hot = T.filter(t => t.rank <= 60 && t.g.length >= 3).map(momentum).sort((x,y) => y.score-x.score), mli = m => rowB(m.t, m.t.rank, momTag(m));
   const up = [...pool].filter(t => t.move>0).sort((x,y) => y.move-x.move).slice(0,5).map(mrow).join('');
   const down = [...pool].filter(t => t.move<0).sort((x,y) => x.move-y.move).slice(0,5).map(mrow).join('');
@@ -88,18 +90,18 @@ function viewHome(){
       <div class="t2">${t.w}-${t.l}, LTF Index ${t.idx.toFixed(1)}. ${st ? `Next: ${st.e.site==='A'?'at':'vs'} ${esc(st.e.opp)}, ${clamp(Math.round(st.p*100),1,99)}% to win. A win puts them near No. ${st.win}, a loss near No. ${st.lose}. ` : ''}Playoff chance ${pct(o.po)}.</div></div>
       <a class="btn go" href="${teamL(t)}">Open</a></section>`; };
   const mine = favs().map(mineRow).join('');
-  const pick = (mine ? '' : `<p class="hint pickteam">Have a team? Follow them and they stay pinned to the top of this page. <a class="txt" href="${L('teams')}">Pick your team</a></p>`)
-    + `<p class="hint pickteam">Think wins should count for more, or defense for less? Set your own weights and every page follows. <a class="txt" href="${L('weights')}">Build your own rankings</a></p>`;
+  const pick = mine ? '' : `<p class="hint pickteam">Have a team? Follow them and they stay pinned to the top of this page. <a class="txt" href="${L('teams')}">Pick your team</a></p>`;
   const wkAll = M.next != null ? G.filter(g => g.w === M.next) : [], wkFin = wkAll.filter(g => g.done).length;      // a week turns over once its games are in, so mid-week some of it is already final
-  const status = `<p class="status"><b>Updated ${builtTxt()}.</b>${STALE ? ' The daily update has not run since then.' : ''} The LTF Index is through week ${M.through}.${M.next == null ? '' : wkFin ? ` Week ${M.next} is under way, with ${wkFin} of ${wkAll.length} games final. The rankings move when the week is in the books.` : ` Week ${M.next} lines and picks are up.`} <a class="txt" href="${L('scorecard')}">How LTF is doing</a></p>`;
-  const start = store.get('ltf.started') ? '' : `<section class="start" aria-label="How to use this site"><div><h2>New here? Three things to know</h2>
+  const status = `<p class="status"><b>Updated ${builtTxt()}.</b>${STALE ? ' The daily update has not run since then.' : ''}${M.next == null ? '' : wkFin ? ` Week ${M.next} is under way, with ${wkFin} of ${wkAll.length} games final. The rankings move when the week is in the books.` : ` Week ${M.next} lines and picks are up.`}</p>`;
+  const start = store.get('ltf.started') ? '' : `<div class="newline"><details><summary>New here? LTF in 30 seconds</summary>
       <ol><li><b>One score for every team.</b> The LTF Index runs 0 to 100, and 50 is an average team. It is built from this season's games and nothing else: no polls, no preseason rankings, no betting lines.</li>
       <li><b>Every number has a reason.</b> Open any team or game to see what drives it. Point at a column heading, or tap a dotted word, for a plain definition.</li>
-      <li><b>It predicts, with receipts.</b> The <a class="txt" href="${L('picks')}">picks</a> carry a confidence score and the reasons behind it, and the <a class="txt" href="${L('scorecard')}">scorecard</a> grades every one. Think the formula is wrong? <a class="txt" href="${L('weights')}">Build your own</a>.</li></ol></div>
-      <button type="button" class="btn" data-dismiss="start">Got it</button></section>`;
+      <li><b>It predicts, with receipts.</b> The <a class="txt" href="${L('picks')}">picks</a> carry a confidence score and the reasons behind it, and the <a class="txt" href="${L('scorecard')}">track record</a> grades every one. Think the formula is wrong? <a class="txt" href="${L('weights')}">Build your own</a>.</li></ol></details>
+      <button type="button" class="ibtn" data-dismiss="start" aria-label="Hide this line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>`;
   const since = window._since && window._since.length ? `<section class="since" aria-label="Since your last visit"><b>Since your last visit:</b> ${window._since.map(x => `${tl(x.t)} ${x.from === x.t.rank ? `held at No. ${x.from}` : `went from No. ${x.from} to No. ${x.t.rank}`}`).join('. ')}.</section>` : '';
-  const body = `${status}${since}${start}${mine}<div class="front">${lead}
-      <section class="sec"><h2>Top 10</h2><p class="hint">LTF Index, with movement since last week.</p><ol class="rows">${top}</ol><p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a><a class="txt" href="${L('weights')}">Build your own rankings</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section></div>
+  const body = `${start}${since}${mine}<div class="front">${lead}
+      <section class="sec"><h2>Top 10</h2><p class="hint">LTF Index, with movement since last week.</p><ol class="rows">${top}</ol><p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section></div>
+    ${status}
     ${homeWeek()}
     ${tiles ? `<div class="tiles">${tiles}</div>` : ''}${pick}
     <div class="panels">
@@ -130,12 +132,12 @@ function viewRankings(){
     if (q) ts = ts.filter(t => t.n.toLowerCase().includes(q) || t.ab.toLowerCase() === q);
     const count = k => all.filter(t => tierOf(t).k === k).length, top = all.filter(t => tierOf(t).k === 'title');
     const lead = all.length ? `${top.length ? `${list(top.map(tl))} ${top.length === 1 ? 'is the only title contender' : 'are the title contenders'}` : 'No team is in the top tier'}${groupKey() === 'all' ? '' : ` from the ${esc(groupLabel())}`} right now. ${count('playoff')} more ${count('playoff') === 1 ? 'team is' : 'teams are'} playoff caliber and ${count('top25')} are top 25 caliber.` : '';
-    return {title:'Tiers', controls:true, lead, card: groupKey() === 'all' ? 'tiers' : null, alts: [['tiers','Tiers'],['top25','Top 25'],['top10','Top 10']],
+    return {title:'Tiers', controls:true, ctl: rankSeg('tiers'), lead, card: groupKey() === 'all' ? 'tiers' : 'tiers:' + groupKey(), alts: rankCards(groupKey()).alts,
       top: pageTop('Rankings', `<b>${groupLabel()}, in tiers.</b> The same LTF Index, cut into seven bands eight points wide. The names describe the level a team has played at so far. They are not a forecast. Select a team for their full page.`),
-      body: rankSeg('tiers') + (ts.length ? tierBoard(ts) : `<p class="empty">No team matches "${esc(R.q.find || '')}".</p>`)};
+      body: (ts.length ? tierBoard(ts) : `<p class="empty">No team matches "${esc(R.q.find || '')}".</p>`)};
   }
   const wk = HW.includes(+R.q.week) ? +R.q.week : M.through, live = wk === M.through;
-  const weeks = HW.length > 1 ? `<div class="seg" role="group" aria-label="Rankings as of which week">${HW.map(w => `<a data-keep href="${Lq({week: w===M.through ? null : w, sort:null, dir:null})}" aria-current="${w===wk}">${w===M.through ? `After week ${w}, latest` : `After week ${w}`}</a>`).join('')}</div>` : '';
+  const weeks = HW.length > 1 ? `<div class="seg fhide" role="group" aria-label="Rankings as of which week">${HW.map(w => `<a data-keep href="${Lq({week: w===M.through ? null : w, sort:null, dir:null})}" aria-current="${w===wk}">${w===M.through ? `After week ${w}, latest` : `After week ${w}`}</a>`).join('')}</div>` : '';
   const q = findText();
   let table, key;
   if (live){
@@ -146,12 +148,12 @@ function viewRankings(){
     if (s.key==='team') rows.sort((a,b) => s.dir*-1*a.n.localeCompare(b.n)); else rows.sort((a,b) => -s.dir*(val(b)-val(a)) || b.cz-a.cz);
     if (q) rows = rows.filter(t => t.n.toLowerCase().includes(q) || t.ab.toLowerCase() === q);
     const showNat = groupKey() !== 'all', hasMove = HW.length > 1, span = 5 + COMP.length + (showNat?1:0) + (hasMove?1:0);
-    const head = `<tr>${th('Rank','num')}${showNat ? th('National','num','nat') : ''}${sortTh('team','Team','','idx')}${sortTh('rec','Record','num','idx','rec')}${sortTh('idx','LTF','','idx','index')}
-      ${hasMove ? sortTh('move','Last week','num wide','idx','lw') : ''}${COMP.map(c => sortTh(c.k,c.col,'num wide','idx',c.k)).join('')}${th('Last 3','wide','form')}</tr>`;
-    const body = rows.map(t => `<tr><td class="num rk">${t.srank}</td>${showNat?`<td class="num nat">${t.rank}</td>`:''}${teamCell(t, true)}
-      <td class="num rec">${t.w}-${t.l}<small class="wide">${t.cw+t.cl?`${t.cw}-${t.cl}`:''}</small></td>
+    const head = `<tr>${th('Rank','num')}${showNat ? th('National','num','nat') : ''}${sortTh('team','Team','','idx')}${sortTh('rec','Record','num hide480','idx','rec')}${sortTh('idx','LTF','','idx','index')}
+      ${hasMove ? sortTh('move','Last week','num mvc','idx','lw') : ''}${COMP.map(c => sortTh(c.k,c.col,'num wide','idx',c.k)).join('')}${th('Last 3','wide','form')}</tr>`;
+    const body = rows.map(t => `<tr><td class="num rk">${t.srank}</td>${showNat?`<td class="num nat">${t.rank}</td>`:''}${teamCell(t, true, true)}
+      <td class="num rec hide480">${t.w}-${t.l}<small class="wide">${t.cw+t.cl?`${t.cw}-${t.cl}`:''}</small></td>
       <td class="idx"><b>${t.idx.toFixed(1)}</b>${strip(t.idx)}</td>
-      ${hasMove ? `<td class="num wide">${lastWeek(t)}</td>` : ''}
+      ${hasMove ? `<td class="num mvc">${lastWeek(t)}</td>` : ''}
       ${COMP.map(c => { const zv = t.z[c.k]; return `<td class="num c wide ${zv>=0?'pos':'neg'}" style="--t:${clamp(Math.abs(zv)/2.5,0,1).toFixed(2)}">${t.rk[c.k]}</td>`; }).join('')}<td class="wide">${form(t)}</td></tr>`).join('');
     table = `<div class="scroll"><table class="grid"><thead>${head}</thead><tbody>${body || emptyRow(span,'team')}</tbody></table></div>`;
     key = colKey([['LTF', 'The LTF Index, from 0 to 100. An average team is 50. The green bar shows the same score as a spot on a field.'],
@@ -179,8 +181,8 @@ function viewRankings(){
     lead = `${tl(a)} ${own} at ${a.idx.toFixed(1)}${b2 ? `, with ${tl(b2)} ${(a.idx-b2.idx).toFixed(1)} back` : ''}.${riser ? ` Biggest riser: ${tl(riser)}, up ${riser.move} to No. ${riser.rank}.` : ''}`; }
   else if (pool.length){ const a = pool.filter(t => t.hist[wk]).sort((x,y) => x.hist[wk].rank-y.hist[wk].rank)[0];
     if (a) lead = `After week ${wk}, ${tl(a)} ${gk === 'all' ? 'was No. 1' : `led the ${esc(groupLabel())}`} at ${a.hist[wk].idx.toFixed(1)}. They are No. ${a.rank} now.`; }
-  return {title:'Rankings', controls:true, top: pageTop('Rankings', dek), body: rankSeg('list') + weeks + key + table, lead,
-    card: confBySlug[gk] ? 'conference:' + gk : 'top25', alts: confBySlug[gk] ? null : [['top25','Top 25'],['top10','Top 10'],['tiers','Tiers']]};
+  return {title:'Rankings', controls:true, ctl: rankSeg('list'), top: pageTop('Rankings', dek), body: weeks + key + table, lead,
+    ...rankCards(gk)};
 }
 
 /* ================= teams ================= */
@@ -268,46 +270,67 @@ function remaining(t){
 function viewTeam(){
   const t = bySlug[R.id]; if (!t) return viewNotFound();
   const conf = confByName[t.c], fl = favs(), fav = fl.includes(t), o = odds(t), st = stakes(t), sw = strengths(t);
+  const TABS = [['overview','Overview'], ['games','Games'], ['stats','Stats'], ['outlook','Outlook']];
+  const tab = TABS.some(x => x[0] === R.q.tab) ? R.q.tab : 'overview';
   const parts = COMP.map(c => { const zv = t.z[c.k], w = clamp(Math.abs(zv)/3,0,1)*50;
     return `<tr><th scope="row">${term(c.k, c.name)}<span class="wt">${share(c.k)}% of the score</span></th>
       <td class="zcell"><span class="zbar ${zv>=0?'pos':'neg'}"><i style="width:${w.toFixed(1)}%"></i></span></td>
       <td class="num">${ord(t.rk[c.k])}<br>${tierTag(t.rk[c.k])}</td><td class="say">${say(c.k,t)}</td></tr>`; }).join('');
-  const mv = t.move, moved = mv == null ? '' : mv > 0 ? ` Up ${mv} ${mv===1?'spot':'spots'} since last week.` : mv < 0 ? ` Down ${-mv} ${mv===-1?'spot':'spots'} since last week.` : ' Same spot as last week.';
   const other = byRank().find(x => x !== t);
   const ne = t.sched.find(q => !q.game.done), nx = ne && gameLine(ne.game), no = ne && byName[ne.opp];
   const nextUp = ne ? `<b>Next:</b> ${ne.site === 'A' ? 'at' : 'vs'} ${no ? `No. ${no.rank} ` : ''}${teamRef(ne.opp)}${ne.site === 'N' ? ' at a neutral site' : ''}, ${fmtDay(ne.date)}.${nx ? ` LTF line: ${lineTxt(nx)}.` : ''} <a class="txt" href="${gameL(ne.game)}">Game preview</a>` : '';
   const hs = HW.filter(w => t.hist[w]).map(w => ({w, r:t.hist[w].rank})), hi = [...hs].sort((a,b) => a.r-b.r)[0], lo = [...hs].sort((a,b) => b.r-a.r)[0];
-  const range = hs.length > 1 ? `<p class="next">Season high: No. ${hi.r} after week ${hi.w}. Season low: No. ${lo.r} after week ${lo.w}. <a class="txt" href="${L('rankings', null, {week: HW[0]})}">Rankings by week</a></p>` : '';
+  const range = hs.length > 1 ? `<p class="next">Season high: No. ${hi.r} after week ${hi.w}. Season low: No. ${lo.r} after week ${lo.w}.</p>` : '';
+  const tileT = (big, small, cls) => `<div class="stile${cls ? ' ' + cls : ''}"><b>${big}</b><span>${small}</span></div>`;
+  const stat = s => { const m = /^(.*) \((\w+)\)$/.exec(s); return m ? `<li><span>${up1(m[1])}</span><b>${m[2]}</b></li>` : `<li><span>${s}</span></li>`; };
+  const m = t.g.length ? momentum(t) : null;
+  let pane = '';
+  if (tab === 'overview') pane = `
+    <section class="tsec"><h2 class="th2">Where they rank</h2><div class="stiles">
+      ${COMP.map(c => tileT(ord(t.rk[c.k]), c.name)).join('')}
+      ${tileT(ord(t.tierRank), `In the ${t.tier==='P4'?'Power 4':'Group of 6'}`)}${t.c==='Independent' ? '' : tileT(ord(t.cRank), `In the ${esc(t.c)}`)}
+      ${M.apWeek == null ? '' : tileT(t.d.apr ? `No. ${t.d.apr}` : 'NR', t.d.apr ? 'In the AP poll' : 'Unranked by the AP', 'muted')}</div></section>
+    <section class="tsec"><h2 class="th2">This week</h2><p class="tpara">${whyMoved(t)}</p>
+      ${st ? `<div class="stakes"><div class="sk1"><span>${st.e.site==='A'?'At':'Against'} ${teamRef(st.e.opp)}</span><b>${clamp(Math.round(st.p*100),1,99)}% to win</b></div>
+        <div class="sk2">${tileT(`No. ${st.win}`, 'About where a win puts them')}${tileT(`No. ${st.lose}`, 'About where a loss puts them')}</div>
+        <a class="skgo" href="${gameL(st.e.game)}">Game preview<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></a></div>` : ''}
+      ${teamBuySell(t)}
+      ${t.h2h.length ? `<p class="tpara"><b>Ranked ahead of a team that beat them.</b> ${t.h2h.map(x => esc(h2hText(x))).join(' ')}</p>` : ''}</section>
+    <div class="tcols">
+      <section class="tsec"><h2 class="th2 good">Best at</h2><ul class="slist">${sw.best.map(stat).join('')}</ul></section>
+      <section class="tsec"><h2 class="th2 bad">Weakest at</h2><ul class="slist">${sw.worst.map(stat).join('')}</ul></section>
+    </div>
+    ${m || t.luck != null ? `<section class="tsec"><h2 class="th2">Form</h2><div class="stiles">
+      ${m ? tileT(fix1(m.score), `Momentum, ${momLabel(m.score).toLowerCase()}`, m.score >= 2 ? 'pos' : m.score <= -2 ? 'neg' : '') : ''}
+      ${t.luck == null ? '' : tileT(signed(t.luck), `Points a game of ${t.luck >= 0 ? 'good' : 'bad'} luck`)}
+      ${t.swing != null && steadyWord(t) ? tileT(steadyWord(t), 'Week to week') : ''}</div>
+      <p class="tlinks"><a class="txt" href="${L('momentum')}">Momentum</a><a class="txt" href="${L('luck')}">Luck</a><a class="txt" href="${L('compare', null, {a:t.slug, b:other.slug})}">Compare ${esc(t.n)}</a></p></section>` : ''}`;
+  else if (tab === 'games') pane = `
+    <section class="tsec"><h2 class="th2">Week by week</h2>${trend(t)}${range}</section>
+    <section class="tsec"><h2 class="th2">Results</h2>${gameLog(t)}</section>
+    <section class="tsec"><h2 class="th2">Still to play</h2>${remaining(t)}</section>`;
+  else if (tab === 'stats') pane = `
+    <section class="tsec"><h2 class="th2">What makes up the score</h2><table class="parts"><tbody>${parts}</tbody></table></section>
+    <section class="tsec">${statTable(t)}</section>`;
+  else pane = `
+    <section class="tsec"><h2 class="th2">The season ahead</h2><div class="stiles">
+      ${tileT(pct(o.po), term('po', 'Make the playoff'))}
+      ${t.c==='Independent' ? '' : tileT(pct(o.cf), term('ct', 'Win the ' + esc(t.c)))}
+      ${tileT(pct(o.bowl), term('bowl', 'Bowl eligible'))}
+      ${tileT(o.xw.toFixed(1), `${term('xw', 'Projected wins')}, of ${t.sched.length}`)}</div>
+      <p class="tlinks"><a class="txt" href="${L('odds')}">Every team's season odds</a></p></section>
+    <section class="tsec"><h2 class="th2">Still to play</h2>${remaining(t)}</section>`;
   const body = `<div class="tpage">
     <div class="hero" style="--tc:${esc(t.col)};--tf:${t.fg}" data-ab="${esc(t.ab)}">
       <div class="hname">${logosOn() ? `<div class="hmark">${badge(t,'xl')}</div>` : ''}<div><h1>${esc(t.n)}</h1>
-        <p class="sub">${t.w}-${t.l}${t.cw+t.cl?`, ${t.cw}-${t.cl} in the ${esc(t.c)}`:''}.${moved}</p></div></div>
-      <div class="hnums"><div class="big"><b>No. ${t.rank}</b><span>of ${T.length} teams</span></div><div class="big"><b>${t.idx.toFixed(1)}</b><span>LTF Index, ${tier(t.rank).toLowerCase()}</span></div>
-        ${COMP.map(c => `<div><b>${ord(t.rk[c.k])}</b><span>${c.col.toLowerCase()}</span></div>`).join('')}</div>
+        <p class="sub">${t.w}-${t.l}${t.cw+t.cl?`, ${t.cw}-${t.cl} in the ${esc(t.c)}`:''}</p></div></div>
+      <div class="hnums"><div class="big"><b>No. ${t.rank}</b><span>of ${T.length} teams ${t.prevRank != null ? moveWords(t.move, t.prevRank) : ''}</span></div><div class="big"><b>${t.idx.toFixed(1)}</b><span>LTF Index, ${tier(t.rank).toLowerCase()}</span></div></div>
       <div class="hstrip">${strip(t.idx,true)}</div>
       ${nextUp ? `<p class="hnext">${nextUp}</p>` : ''}
-      <p class="hmore">${[`${ord(t.tierRank)} in the ${t.tier==='P4'?'Power 4':'Group of 6'}`, t.c==='Independent' ? '' : `${ord(t.cRank)} in the ${esc(t.c)}`, M.apWeek == null ? '' : t.d.apr ? `No. ${t.d.apr} in the AP poll` : 'unranked by the AP'].filter(Boolean).join(', ')}.</p>
-      <div class="acts">${shareBtn('team:' + t.slug, 'Share', 'sharebtn')}<button class="follow" type="button" data-follow="${t.slug}" aria-pressed="${fav}">${fav ? 'Following' : 'Follow this team'}</button>
-        <a href="${L('compare', null, {a:t.slug, b:other.slug})}">Compare</a><a href="${confL(conf)}">${esc(conf.label)}</a></div>
+      <div class="acts"><button class="follow" type="button" data-follow="${t.slug}" aria-pressed="${fav}">${fav ? 'Following' : 'Follow'}</button>${shareBtn('team:' + t.slug, 'Share', 'sharebtn', [['team:' + t.slug, 'Summary'], ['profile:' + t.slug, 'Full profile']])}</div>
     </div>
-    <div class="facts">${fact(term('po'), pct(o.po), `<a class="txt" href="${L('odds')}">All season odds</a>`)}
-      ${t.c==='Independent' ? '' : fact(term('ct', 'Win the ' + esc(t.c)), pct(o.cf), 'in simulated seasons')}
-      ${fact(term('bowl', 'Bowl eligible'), pct(o.bowl), t.w >= 6 ? 'already there with six wins' : `needs ${6-t.w} more ${6-t.w===1?'win':'wins'}`)}
-      ${fact(term('xw'), o.xw.toFixed(1), `of ${t.sched.length} regular-season games`)}</div>
-    <div class="tbody">
-    <p class="next why1">${whyMoved(t)}</p>
-    ${st ? `<p class="next"><b>This week's stakes.</b> ${st.e.site==='A'?'At':'Against'} ${teamRef(st.e.opp)}, ${clamp(Math.round(st.p*100),1,99)}% to win. A win would put ${esc(t.n)} near No. ${st.win}. A loss would drop them to about No. ${st.lose}. <a class="txt" href="${gameL(st.e.game)}">Game preview</a></p>` : ''}
-    <p class="next"><b>Best at:</b> ${list(sw.best)}. <b>Weakest at:</b> ${list(sw.worst)}.</p>
-    ${t.luck == null ? '' : `<p class="next"><b>Luck and steadiness.</b> ${Math.abs(t.luck) < 1 ? 'Close to neutral luck' : `About ${Math.abs(t.luck).toFixed(1)} points a game of ${t.luck > 0 ? 'good' : 'bad'} luck`} from fumbles, interceptions and opponents' kicking (${ord(t.luckRank)} luckiest).${t.swing != null ? ` ${steadyWord(t) === 'Steady' ? 'A steady team: their level changes little from week to week.' : steadyWord(t) === 'Up and down' ? 'An up-and-down team: their level swings a lot from week to week.' : 'About as steady as most teams.'}` : ''} <a class="txt" href="${L('luck')}">Luck and steadiness</a></p>`}
-    ${t.g.length ? (m => `<p class="next"><b>Momentum.</b> ${momLabel(m.score)}, ${fix1(m.score)} on a scale from minus 10 to plus 10 (${ord(m.rank)} of ${T.length}). ${momWhy(t)} Momentum is tracked for the story and is not part of the score. <a class="txt" href="${L('momentum')}">Momentum</a></p>`)(momentum(t)) : ''}
-    ${teamBuySell(t)}
-    ${t.h2h.length ? `<p class="next"><b>Ranked ahead of a team that beat them.</b> ${t.h2h.map(x => esc(h2hText(x))).join(' ')}</p>` : ''}
-    <div class="dgrid">
-      <div><h3>What makes up the score</h3><table class="parts"><tbody>${parts}</tbody></table>${statTable(t)}</div>
-      <div><h3>Week by week</h3>${trend(t)}${range}
-        <h3>Results</h3>${gameLog(t)}
-        <h3>Still to play</h3>${remaining(t)}</div>
-    </div></div></div>`;
+    <nav class="ptabs ttabs" aria-label="${esc(t.n)}">${TABS.map(([k, l]) => `<a data-keep href="${Lq({tab: k === 'overview' ? null : k})}"${k === tab ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
+    <div class="tbody tpane">${pane}</div></div>`;
   return {title:t.n, top: crumbs([['Teams', L('teams')], [esc(conf.label), confL(conf)], [esc(t.n)]]), body};
 }
 
@@ -351,7 +374,7 @@ function viewConference(){
   const fut = FUTURE(), wk = fut.includes(+R.q.week) ? +R.q.week : M.next;
   const games = wk == null ? [] : G.filter(g => g.w === wk && [g.h, g.a].some(n => byName[n] && byName[n].c === c.name));
   const ld = c.sorted[0];
-  return {title:c.label, card:'conference:' + c.slug,
+  return {title:c.label, card:'conference:' + c.slug, alts: rankCards(c.slug).alts,
     lead: c.tier ? `The ${esc(c.label)} is ${ord(c.rank)} of ${CONFS.filter(q => q.tier).length} conferences at ${c.avg.toFixed(1)}. ${tl(ld)} leads, No. ${ld.rank} nationally${x.t25 ? `, and ${x.t25 === 1 ? 'is the only team' : `${x.t25} teams are`} in the top 25` : ''}.`
                  : `${tl(ld)} leads the independents at ${ld.idx.toFixed(1)}, No. ${ld.rank} nationally.`,
     top: pageTop(esc(c.label), c.tier ? `${c.tier==='P4'?'Power 4':'Group of 6'} conference. Standings here go by the LTF Index, not by conference record.` : 'Teams that play without a conference.', [['Conferences', L('conferences')], [esc(c.label)]]),

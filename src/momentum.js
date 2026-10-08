@@ -81,6 +81,7 @@ function momGame(g){
 const up1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ================= the momentum page ================= */
+const trendCards = gk => { const s = gk === 'all' ? '' : ':' + gk; return [['momentum' + s, 'Momentum'], ['luck' + s, 'Luck'], ['movers', 'Biggest movers']]; };
 function viewMomentum(){
   const q = findText(), s = sortState('mom');
   const title = 'Momentum', dek = `<b>${groupLabel()}.</b> Who is heating up and who is cooling off: the rating trend, recent play, streaks and upsets. Momentum is tracked here for the story. It is not part of the LTF Index, because twelve past seasons say it does not predict the next game.`;
@@ -110,7 +111,7 @@ function viewMomentum(){
         ${fact('After missing it by 14 or more', f1(MOM.carry.cold) + '%', `beat it the next week. ${MOM.carry.coldN.toLocaleString()} games`)}</div>
       <p class="hint after">Hot favorites and cold favorites both won about as often as the LTF line said they would. Beating the line by two touchdowns one week meant little the next: those teams beat it again ${f1(MOM.carry.hot)}% of the time, where a coin flip is 50%. The week after losing as an LTF favorite of 7 or more, teams landed ${Math.abs(MOM.upL.ltf).toFixed(1)} points ${MOM.upL.ltf < 0 ? 'under' : 'over'} the LTF line on average across ${MOM.upL.n} games, which is no bounce-back and no hangover.</p></section>`;
   const hot = scoped[0], cold = scoped[scoped.length - 1];
-  return {title, controls:true, lead: hot && cold && hot !== cold ? `Hottest${groupKey() === 'all' ? '' : ` in the ${esc(groupLabel())}`}: ${tl(hot.t)}, ${fix1(hot.score)}. Coldest: ${tl(cold.t)}, ${fix1(cold.score)}. The scale runs from minus 10 to plus 10.` : '', top: pageTop(title, dek),
+  return {title, controls:true, card: 'momentum' + (groupKey() === 'all' ? '' : ':' + groupKey()), alts: trendCards(groupKey()), lead: hot && cold && hot !== cold ? `Hottest${groupKey() === 'all' ? '' : ` in the ${esc(groupLabel())}`}: ${tl(hot.t)}, ${fix1(hot.score)}. Coldest: ${tl(cold.t)}, ${fix1(cold.score)}. The scale runs from minus 10 to plus 10.` : '', top: pageTop(title, dek),
     body: `<div class="panels">
       <section class="panel"><h2>Heating up</h2><p class="hint">The highest momentum scores right now.</p><ol class="rows">${scoped.slice(0,6).map(li).join('')}</ol></section>
       <section class="panel"><h2>Cooling off</h2><p class="hint">The lowest momentum scores right now.</p><ol class="rows">${scoped.slice(-6).reverse().map(li).join('')}</ol></section>

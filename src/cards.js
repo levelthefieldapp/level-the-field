@@ -4,8 +4,8 @@
    the room. Every card carries the site's name and the week it describes, so a screenshot says where it came from.
    Text is always fitted to its box, so a long team name shrinks instead of running off the edge. */
 const CARD_SIZE = {wide: [1200, 630], tall: [1080, 1350]};
-const CK = {ink:'#15171A', paper:'#FFFFFF', alt:'#F2F3F5', line:'#D8DBE0', muted:'#5A616B', bar:'#000000', barMuted:'#AEB4BD',
-            pylon:'#F2580A', turf:'#1E6A4C', lit:'#43A575', good:'#0B7F45', bad:'#C62828', goodLit:'#3ED18B', badLit:'#FF6B62'};
+const CK = {ink:'#10201A', paper:'#FFFFFF', alt:'#F2F5F3', line:'#D9E1DC', muted:'#56645D', bar:'#10201A', barMuted:'#C9D4CE',
+            pylon:'#F2580A', turf:'#17573F', lit:'#3E9C6C', good:'#12704A', bad:'#B42318', goodLit:'#4CC98A', badLit:'#FF7B70'};
 const SITE_ADDR = SITE && SITE.url ? SITE.url.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '') : '';
 const cfont = (px, wt, o = {}) => `${o.it ? 'italic ' : ''}${wt || 700} ${o.w || 'normal'} ${px}px Archivo, system-ui, -apple-system, "Segoe UI", Arial, sans-serif`;
 function cText(c, str, x, y, o){   // one line of text. o.max is the widest it may be; it shrinks to fit.
@@ -29,11 +29,13 @@ function cSlab(c, x, y, w, h, fill, lean){   // a bar that leans forward, the wa
   const d = lean == null ? h * 7/24 : lean;
   c.beginPath(); c.moveTo(x + d, y); c.lineTo(x + w + d, y); c.lineTo(x + w, y + h); c.lineTo(x, y + h); c.closePath(); c.fillStyle = fill; c.fill();
 }
-function cMark(c, x, y, h){   // the logo mark, h tall
-  const k = h/24; cSlab(c, x, y, 23*k, h, CK.pylon, 7*k);
-  c.strokeStyle = '#fff'; c.lineWidth = 2.2*k; c.beginPath();
-  for (const sx of [12.5, 17.5, 22.5]){ c.moveTo(x + sx*k, y + 5*k); c.lineTo(x + (sx - 4.1)*k, y + 19*k); }
-  c.stroke();
+const MARK_P = {};
+function cMark(c, x, y, h){   // the logo mark, h tall and 1.4 h wide: the 50 on a leaning block of turf, with the pylon corner
+  if (!MARK_P.block) for (const k of ['block', 'line', 'five', 'zero', 'corner']) MARK_P[k] = new Path2D(MARK[k]);
+  const k = h/MARK.H; c.save(); c.translate(x, y); c.scale(k, k);
+  c.fillStyle = CK.turf; c.fill(MARK_P.block); c.fillStyle = '#fff'; c.fill(MARK_P.line); c.fill(MARK_P.five); c.fill(MARK_P.zero);
+  c.fillStyle = CK.pylon; c.fill(MARK_P.corner); c.restore();
+  return x + h*MARK.W/MARK.H;
 }
 function cWordmark(c, x, y, px, color){   // LEVEL the FIELD, as in the header. Returns where it ends.
   for (const [w, wt, a] of [['LEVEL', 900, 1], [' THE ', 500, .85], ['FIELD', 900, 1]]) x += cText(c, w, x, y, {px, wt, it:true, w:'condensed', color, alpha:a, base:'middle'});
@@ -54,18 +56,18 @@ function cardLogo(t){   // the team's logo as a picture, when the site has its o
   }));
 }
 function cBadge(c, t, im, x, y, s, plate){   // a team's mark in a square s wide: the logo, or the abbreviation on the team's color
-  if (plate){ cSlab(c, x - s*0.06, y - s*0.08, s*1.12, s*1.16, '#fff', s*0.2); }
-  if (im){ const r = Math.min(s/im.width, s/im.height), w = im.width*r, h = im.height*r, off = plate ? s*0.1 : 0; c.drawImage(im, x + (s - w)/2 + off, y + (s - h)/2, w, h); return; }
-  if (!t){ cSlab(c, x, y + s*0.2, s*0.86, s*0.6, CK.muted, s*0.14); cText(c, 'FCS', x + s*0.5, y + s*0.52, {px:s*0.3, wt:800, w:'condensed', color:'#fff', align:'center', base:'middle', max:s*0.7}); return; }
-  if (plate){ cText(c, t.ab, x + s*0.6, y + s*0.52, {px:s*0.44, wt:900, it:true, w:'condensed', color: t.fg === '#FFFFFF' ? t.col : CK.ink, align:'center', base:'middle', max:s*0.86}); return; }
-  cSlab(c, x, y + s*0.16, s*0.86, s*0.68, t.col, s*0.14);
+  if (plate){ cSlab(c, x - s*0.08, y - s*0.08, s*1.16, s*1.16, '#fff', 0); }
+  if (im){ const r = Math.min(s/im.width, s/im.height), w = im.width*r, h = im.height*r, off = 0; c.drawImage(im, x + (s - w)/2 + off, y + (s - h)/2, w, h); return; }
+  if (!t){ cSlab(c, x + s*0.07, y + s*0.2, s*0.86, s*0.6, CK.muted, 0); cText(c, 'FCS', x + s*0.5, y + s*0.52, {px:s*0.3, wt:800, w:'condensed', color:'#fff', align:'center', base:'middle', max:s*0.7}); return; }
+  if (plate){ cText(c, t.ab, x + s*0.5, y + s*0.52, {px:s*0.44, wt:900, it:true, w:'condensed', color: t.fg === '#FFFFFF' ? t.col : CK.ink, align:'center', base:'middle', max:s*0.86}); return; }
+  cSlab(c, x + s*0.07, y + s*0.16, s*0.86, s*0.68, t.col, 0);
   cText(c, t.ab, x + s*0.5, y + s*0.52, {px:s*0.32, wt:800, w:'condensed', color:t.fg, align:'center', base:'middle', max:s*0.7});
 }
 function cFoot(c, W, H, h, note){   // the black strip along the bottom of every card: the site's name, what the card shows, and the address
   c.fillStyle = CK.bar; c.fillRect(0, H - h, W, h);
-  const mh = h*0.4, pad = W*0.047, y = H - h/2;
-  cMark(c, pad, y - mh/2, mh);
-  const end = cWordmark(c, pad + mh*30/24 + h*0.16, y + h*0.02, h*0.36, '#fff');
+  const mh = h*0.48, pad = W*0.047, y = H - h/2;
+  const mx = cMark(c, pad, y - mh/2, mh);
+  const end = cWordmark(c, mx + h*0.16, y + h*0.02, h*0.36, '#fff');
   const right = [note, SITE_ADDR].filter(Boolean);
   if (right.length === 2){
     cText(c, right[0], W - pad, y - h*0.13, {px:h*0.25, wt:600, color:CK.barMuted, align:'right', base:'middle', max:W - pad*2 - end - 40});
@@ -175,11 +177,16 @@ async function cRows(c, rows, x, y, w, rowH, o = {}){   // team rows: rank, mark
     if (r.val != null) cText(c, r.val, vx, my + 2, {px:k*0.48, wt:900, it:true, w:'condensed', color:r.valColor || CK.ink, align:'right', base:'middle', max:vw}); });
 }
 const rankRow = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}${t.move ? `, ${moveTxt(t.move)}` : ''}`, noteColor: t.move > 0 ? CK.good : t.move < 0 ? CK.bad : CK.muted, val:t.idx.toFixed(1)});
-async function cardTop(c, W, H, n){   // the top 25 on a tall card, or the top 10 on a wide one
-  const tall = H > W, P = tall ? 56 : 56, foot = tall ? 104 : 84, br = byRank().slice(0, n);
-  let y = cHead(c, W, P, `LTF Top ${n}`, tall ? `Every FBS team on one scale. After week ${M.through}, ${M.season}.` : null);
-  const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/half);
-  await cRows(c, br.slice(0, half).map(rankRow), P, y, cw, rowH); await cRows(c, br.slice(half).map(rankRow), P + cw + gap, y, cw, rowH);
+/* A list card can be cut to one group of teams: "p4", "g6", or a conference's slug. No group, or "all", is every team. */
+const cardGroup = g => !g || g === 'all' ? 'all' : GROUPS[g] || confBySlug[g] ? g : null;
+const cardIn = g => g === 'all' ? () => true : g === 'p4' ? t => t.tier === 'P4' : g === 'g6' ? t => t.tier === 'G6' : t => t.c === confBySlug[g].name;
+const cardGroupName = g => g === 'all' ? '' : GROUPS[g] || confBySlug[g].label;
+async function cardTop(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one, for every team or one group
+  const n = q.n, g = q.g, tall = H > W, P = 56, foot = tall ? 104 : 84, br = byRank().filter(cardIn(g)).slice(0, n);
+  const row = g === 'all' ? rankRow : (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${t.c}${t.rank !== i + 1 ? `, No. ${t.rank} nationally` : ''}`, val:t.idx.toFixed(1)});
+  let y = cHead(c, W, P, g === 'all' ? `LTF Top ${n}` : `${cardGroupName(g)} Top ${n}`, tall ? (g === 'all' ? `Every FBS team on one scale. After week ${M.through}, ${M.season}.` : `${cardGroupName(g)} teams only, on the same scale as everyone. After week ${M.through}, ${M.season}.`) : null);
+  const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/half), rows = br.map(row);
+  await cRows(c, rows.slice(0, half), P, y, cw, rowH); await cRows(c, rows.slice(half), P + cw + gap, y, cw, rowH);
   cFoot(c, W, H, foot, weekNote());
 }
 async function cardConference(c, W, H, conf){   // one conference, every team in order
@@ -193,9 +200,9 @@ async function cardConference(c, W, H, conf){   // one conference, every team in
 }
 
 /* ---------- tiers: every team in its band ---------- */
-async function cardTiers(c, W, H){
-  const P = 56, foot = 104, br = byRank(), ims = await Promise.all(br.map(cardLogo)), imOf = new Map(br.map((t, i) => [t, ims[i]]));
-  let y = cHead(c, W, P, 'LTF tiers', `Every FBS team by level of play so far. After week ${M.through}, ${M.season}.`) - 6;
+async function cardTiers(c, W, H, q){
+  const g = q.g, P = 56, foot = 104, br = byRank().filter(cardIn(g)), ims = await Promise.all(br.map(cardLogo)), imOf = new Map(br.map((t, i) => [t, ims[i]]));
+  let y = cHead(c, W, P, g === 'all' ? 'LTF tiers' : `${cardGroupName(g)} tiers`, `${g === 'all' ? 'Every FBS team' : `Every ${cardGroupName(g)} team`} by level of play so far. After week ${M.through}, ${M.season}.`) - 6;
   const labW = 238, gx = P + labW, gw = W - P - gx, groups = TIERS.map(tr => [tr, br.filter(t => tierOf(t) === tr)]).filter(q => q[1].length);
   // pick the largest mark size that lets every band fit above the footer
   let cell = 74, per = 1, rowsOf = n => Math.ceil(n/per);
@@ -274,6 +281,146 @@ async function cardBuySell(c, W, H, d){
   cFoot(c, W, H, foot, `After week ${d.w}. Wins LTF expects in each team's next games.`);
 }
 
+/* ---------- two lists side by side: movers, momentum, luck, under the radar ---------- */
+async function cTwo(c, W, H, title, cols, note, rank = true){
+  const P = 56, foot = 84, gap = 52, cw = (W - P*2 - gap)/2, max = Math.max(...cols.map(q => q.rows.length), 1);
+  let y = cHead(c, W, P, title, null);
+  for (const [i, q] of cols.entries()){ const x = P + i*(cw + gap);
+    cText(c, q.title, x, y + 14, {px:32, wt:850, w:'semi-condensed', color:q.color || CK.ink, max:q.sub ? cw - 230 : cw});
+    if (q.sub) cText(c, q.sub, x + cw, y + 14, {px:20, wt:600, color:CK.muted, align:'right', max:cw - 200});
+    c.fillStyle = CK.ink; c.fillRect(x, y + 28, cw, 3);
+    const rowH = Math.floor((H - foot - y - 46)/Math.max(max, 4));
+    if (q.rows.length) await cRows(c, q.rows, x, y + 31, cw, rowH, {rank, valW:q.valW || 120});
+    else cText(c, 'No team this week.', x, y + 84, {px:26, wt:500, color:CK.muted});
+  }
+  cFoot(c, W, H, foot, note);
+}
+const signedTxt = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+
+function moversCard(){   // the biggest moves since last week, among teams in or near the top 60, as on the front page
+  if (HW.length < 2) return null;
+  const pool = T.filter(t => t.move && (t.rank <= 60 || t.prevRank <= 60));
+  const up = pool.filter(t => t.move > 0).sort((a,b) => b.move - a.move).slice(0, 5), down = pool.filter(t => t.move < 0).sort((a,b) => a.move - b.move).slice(0, 5);
+  return up.length + down.length ? {up, down} : null;
+}
+async function cardMovers(c, W, H, d){
+  const row = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}, was No. ${t.prevRank}`, val:signedTxt(t.move, 0), valColor: t.move > 0 ? CK.good : CK.bad});
+  await cTwo(c, W, H, 'Biggest movers', [{title:'Rising', color:CK.good, sub:'spots since last week', rows:d.up.map(row)}, {title:'Falling', color:CK.bad, sub:'spots since last week', rows:d.down.map(row)}],
+    `Teams in or near the top 60. ${weekNote()}`);
+}
+
+function momentumCard(id){   // hottest and coldest, for every team or one group
+  const g = cardGroup(id); if (!g) return null;
+  const ms = T.filter(t => cardIn(g)(t) && t.g.length).map(momentum).sort((a,b) => b.score - a.score);
+  if (ms.length < 4) return null;
+  const n = Math.min(5, Math.floor(ms.length/2));
+  return {g, hot: ms.slice(0, n), cold: ms.slice(-n).reverse()};
+}
+async function cardMomentum(c, W, H, d){
+  const row = m => ({t:m.t, rank:m.t.rank, name:m.t.n, note:`${m.t.w}-${m.t.l}, ${momLabel(m.score).toLowerCase()}`, val:fix1(m.score), valColor: m.score >= 0 ? CK.good : CK.bad});
+  await cTwo(c, W, H, d.g === 'all' ? 'Momentum' : `${cardGroupName(d.g)} momentum`, [{title:'Heating up', color:CK.good, rows:d.hot.map(row)}, {title:'Cooling off', color:CK.bad, rows:d.cold.map(row)}],
+    `Minus 10 to plus 10. Not part of the LTF Index. After week ${M.through}.`);
+}
+
+function luckCard(id){   // luckiest and unluckiest, for every team or one group
+  const g = cardGroup(id); if (!g) return null;
+  const ts = T.filter(t => cardIn(g)(t) && t.luck != null).sort((a,b) => b.luck - a.luck);
+  if (ts.length < 4) return null;
+  const n = Math.min(5, Math.floor(ts.length/2));
+  return {g, lucky: ts.slice(0, n), unlucky: ts.slice(-n).reverse()};
+}
+async function cardLuck(c, W, H, d){
+  const row = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}`, val:signedTxt(t.luck), valColor: t.luck >= 0 ? CK.good : CK.bad});
+  await cTwo(c, W, H, d.g === 'all' ? 'Luck' : `${cardGroupName(d.g)} luck`, [{title:'Luckiest', color:CK.good, sub:'points a game', rows:d.lucky.map(row)}, {title:'Unluckiest', color:CK.bad, sub:'points a game', rows:d.unlucky.map(row)}],
+    `Bounces, tipped passes, the other team's kicks. Not part of the LTF Index.`);
+}
+
+function radarCard(){   // the best teams by LTF that the AP poll leaves out
+  if (M.apWeek == null) return null;
+  const ts = byRank().filter(t => !t.d.apr && t.rank <= 40).slice(0, 10);
+  return ts.length ? ts : null;
+}
+async function cardRadar(c, W, H, ts){
+  const bestWin = t => { const w = t.g.filter(g => g.pf > g.pa && byName[g.opp]).map(g => byName[g.opp]).sort((a,b) => a.rank - b.rank)[0]; return w ? `, beat No. ${w.rank} ${w.n}` : ''; };
+  const row = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}${bestWin(t)}`, val:t.idx.toFixed(1)});
+  const half = Math.ceil(ts.length/2);
+  await cTwo(c, W, H, 'Under the radar', [{title:'Left out of the AP poll', rows:ts.slice(0, half).map(row)}, {title:' ', rows:ts.slice(half).map(row)}],
+    `LTF rank on the left. AP poll, week ${M.apWeek}. ${weekNote()}`);
+}
+
+/* ---------- upset watch: one week's underdogs with a real chance ---------- */
+function upsetsCard(id){
+  const fut = FUTURE(); if (!fut.length) return null;
+  const [w, b] = String(id || '').split(':'), wk = fut.includes(+w) ? +w : M.next, uw = upsetWatch(wk);
+  const band = b != null && b !== '' ? UPSET_BANDS.find(x => x[0] === b) : null;
+  let list, what;
+  if (band){ list = uw.games.filter(u => u.pDog >= band[2] && u.pDog < band[3]).sort((p, q) => q.pDog - p.pDog); what = band[0] === 'all' ? 'Every underdog' : `Underdogs with ${band[0] === '0' ? 'under a 10%' : `a ${band[1]}`} chance`; }
+  else if (uw.alert.length >= 3){ list = uw.alert; what = 'Top 25 teams on upset alert'; }
+  else { list = uw.live; what = 'Underdogs with a real chance'; }
+  return list.length ? {wk, list: list.slice(0, 5), what, more: Math.max(0, list.length - 5)} : null;
+}
+async function cardUpsets(c, W, H, d){
+  const P = 56, foot = 84, day = iso => { const t = new Date(iso); return isNaN(t) ? '' : t.toLocaleDateString('en-US', {timeZone:'America/New_York', weekday:'short', month:'short', day:'numeric'}); };
+  let y = cHead(c, W, P, `Upset watch, week ${d.wk}`, null);
+  cText(c, d.what, P, y + 14, {px:30, wt:850, w:'semi-condensed', color:CK.ink, max:W - P*2 - 320});
+  cText(c, "underdog's chance to win", W - P, y + 14, {px:20, wt:600, color:CK.muted, align:'right', max:300});
+  c.fillStyle = CK.ink; c.fillRect(P, y + 28, W - P*2, 3);
+  const rowH = Math.floor((H - foot - y - 46)/5);
+  await cRows(c, d.list.map(u => ({t:u.dog, name:`No. ${u.dog.rank} ${u.dog.n} ${upsetSite(u)} No. ${u.fav.rank} ${u.fav.n}`, note:`${day(u.g.d)}. LTF line: ${plain(lineTxt(u.pr))}.`, val:`${Math.round(u.pDog*100)}%`})), P, y + 31, W - P*2, rowH, {rank:false, valW:130});
+  cFoot(c, W, H, foot, `Week ${d.wk}, ${M.season}.${d.more ? ` ${up1(NUMW[d.more] || String(d.more))} more on the site.` : ''}`);
+}
+
+/* ---------- one team, the full profile, tall for phones ---------- */
+async function cardProfile(c, W, H, t){
+  const im = await cardLogo(t), fg = t.fg, P = 64, foot = 104, top = 560, soft = fg === '#FFFFFF' ? 'rgba(255,255,255,.82)' : 'rgba(16,17,20,.74)';
+  c.fillStyle = CK.paper; c.fillRect(0, 0, W, H);
+  c.fillStyle = t.col; c.fillRect(0, 0, W, top);
+  c.save(); c.beginPath(); c.rect(0, 0, W, top); c.clip();
+  cText(c, t.ab, W + 40, 300, {px:520, wt:900, it:true, w:'extra-condensed', color:fg, alpha:.08, align:'right', base:'middle'});
+  c.restore();
+  cBadge(c, t, im, P + 8, P, 124, true);
+  cText(c, t.n, P + 172, P + 70, {px:80, wt:900, w:'condensed', color:fg, max:W - P*2 - 180});
+  cText(c, `${t.w}-${t.l}${t.c === 'Independent' ? ', Independent' : `, ${t.cw}-${t.cl} in the ${t.c}`}`, P + 174, P + 116, {px:30, wt:600, color:soft, max:W - P*2 - 180});
+  cText(c, `No. ${t.rank}`, P - 4, 330, {px:150, wt:900, it:true, w:'condensed', color:fg, max:W/2 - P});
+  cText(c, t.move ? `of ${T.length} teams, ${moveTxt(t.move)} since last week` : `of ${T.length} teams`, P, 380, {px:28, wt:600, color:soft, max:W/2 - P});
+  cText(c, t.idx.toFixed(1), W/2 + 20, 330, {px:150, wt:900, it:true, w:'condensed', color:fg, max:W/2 - P - 20});
+  cText(c, `LTF Index, ${tier(t.rank).toLowerCase()}`, W/2 + 24, 380, {px:28, wt:600, color:soft, max:W/2 - P - 24});
+  cStrip(c, P, 440, W - P*2, 26, t.idx);
+  cText(c, '0', P, 504, {px:22, wt:600, color:soft}); cText(c, '50 is an average team', W/2, 504, {px:22, wt:600, color:soft, align:'center'}); cText(c, '100', W - P, 504, {px:22, wt:600, color:soft, align:'right'});
+  // the five parts of the score, as tiles
+  let y = top + 44;
+  cText(c, 'Where they rank', P, y + 10, {px:34, wt:850, w:'semi-condensed', color:CK.ink});
+  y += 32; const tw = (W - P*2 - 4*12)/5;
+  COMP.forEach((k, i) => { const x = P + i*(tw + 12);
+    c.fillStyle = CK.alt; c.fillRect(x, y, tw, 118);
+    cText(c, ord(t.rk[k.k]), x + 16, y + 64, {px:54, wt:900, it:true, w:'condensed', color:CK.ink, max:tw - 28});
+    cText(c, k.col, x + 16, y + 100, {px:22, wt:600, color:CK.muted, max:tw - 28}); });
+  y += 118 + 50;
+  // what they do best and worst
+  const sw = strengths(t), half = (W - P*2 - 40)/2;
+  [['Best at', sw.best, CK.good], ['Weakest at', sw.worst, CK.bad]].forEach(([lab, items, col], i) => { const x = P + i*(half + 40);
+    cText(c, lab, x, y, {px:30, wt:850, w:'semi-condensed', color:col});
+    c.fillStyle = CK.ink; c.fillRect(x, y + 14, half, 3);
+    items.forEach((s, j) => { const m = /^(.*) \((\w+)\)$/.exec(plain(s)), name = m ? m[1] : plain(s), rk = m ? m[2] : '', ry = y + 17 + j*52;
+      c.fillStyle = CK.line; c.fillRect(x, ry + 51, half, 1);
+      cText(c, up1(name), x, ry + 34, {px:24, wt:600, color:CK.ink, max:half - 90});
+      cText(c, rk, x + half, ry + 34, {px:28, wt:900, it:true, w:'condensed', color:CK.ink, align:'right'}); }); });
+  y += 17 + 3*52 + 50;
+  // the season ahead
+  const o = odds(t), outs = [['Make the playoff', pct(o.po)], ...(t.c === 'Independent' ? [] : [[`Win the ${t.c}`, pct(o.cf)]]), ['Bowl eligible', pct(o.bowl)], ['Projected wins', o.xw.toFixed(1)]];
+  cText(c, 'The season ahead', P, y, {px:30, wt:850, w:'semi-condensed', color:CK.ink});
+  c.fillStyle = CK.ink; c.fillRect(P, y + 14, W - P*2, 3);
+  const ow = (W - P*2)/outs.length;
+  outs.forEach(([lab, val], i) => { const x = P + i*ow;
+    cText(c, val, x, y + 82, {px:56, wt:900, it:true, w:'condensed', color:CK.ink, max:ow - 20});
+    cText(c, lab, x, y + 116, {px:21, wt:600, color:CK.muted, max:ow - 20}); });
+  const e = t.sched.find(q => !q.game.done);
+  if (e){ const on = byName[e.opp], x2 = gameLine(e.game), fav = x2 ? (x2.pts === 0 ? "a pick 'em" : `${x2.fav.n} by ${x2.pts}`) : null, ny = Math.min(y + 190, H - foot - 40);
+    c.fillStyle = CK.line; c.fillRect(P, ny - 44, W - P*2, 2);
+    cText(c, `Next: ${e.site === 'A' ? 'at' : 'vs'} ${on ? `No. ${on.rank} ` : ''}${e.opp}, ${etTime(e.game)}.${fav ? ` LTF line: ${fav}.` : ''}`, P, ny, {px:28, wt:700, color:CK.ink, max:W - P*2}); }
+  cFoot(c, W, H, foot, weekNote());
+}
+
 /* ---------- receipts: how the picks did ---------- */
 function receipts(wk){   // one week's graded record and the season's, counted the way the scorecard counts them
   const rows = scoreRows(), week = +wk || (rows.some(r => r.g.w === M.through) ? M.through : Math.max(0, ...rows.map(r => r.g.w))), wr = rows.filter(r => r.g.w === week);      // the last full week, unless asked for another
@@ -309,9 +456,15 @@ const CARDS = {
   team:       {shape:'wide', get: id => bySlug[id], draw: cardTeam, name: t => t.n},
   game:       {shape:'wide', get: id => gameById[id], draw: cardGame, name: g => `${g.a} ${g.n ? 'vs' : 'at'} ${g.h}`},
   conference: {shape:'tall', get: id => confBySlug[id], draw: cardConference, name: x => x.label},
-  top25:      {shape:'tall', get: () => 25, draw: cardTop, name: () => 'LTF Top 25'},
-  top10:      {shape:'wide', get: () => 10, draw: cardTop, name: () => 'LTF Top 10'},
-  tiers:      {shape:'tall', get: () => true, draw: cardTiers, name: () => 'LTF tiers'},
+  top25:      {shape:'tall', get: id => { const g = cardGroup(id); return g && !confBySlug[g] ? {n:25, g} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'LTF Top 25' : `${cardGroupName(q.g)} Top 25`},
+  top10:      {shape:'wide', get: id => { const g = cardGroup(id); return g && !confBySlug[g] ? {n:10, g} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'LTF Top 10' : `${cardGroupName(q.g)} Top 10`},
+  tiers:      {shape:'tall', get: id => { const g = cardGroup(id); return g ? {g} : null; }, draw: cardTiers, name: q => q.g === 'all' ? 'LTF tiers' : `${cardGroupName(q.g)} tiers`},
+  profile:    {shape:'tall', get: id => bySlug[id], draw: cardProfile, name: t => `${t.n}, full profile`},
+  movers:     {shape:'wide', get: () => moversCard(), draw: cardMovers, name: () => 'Biggest movers'},
+  momentum:   {shape:'wide', get: id => momentumCard(id), draw: cardMomentum, name: d => d.g === 'all' ? 'Momentum' : `${cardGroupName(d.g)} momentum`},
+  luck:       {shape:'wide', get: id => luckCard(id), draw: cardLuck, name: d => d.g === 'all' ? 'Luck' : `${cardGroupName(d.g)} luck`},
+  radar:      {shape:'wide', get: () => radarCard(), draw: cardRadar, name: () => 'Under the radar'},
+  upsets:     {shape:'wide', get: id => upsetsCard(id), draw: cardUpsets, name: d => `Upset watch, week ${d.wk}`},
   polls:      {shape:'wide', get: () => pollGaps(), draw: cardPolls, name: () => 'LTF vs the AP poll'},
   conferences:{shape:'wide', get: () => true, draw: cardConferences, name: () => 'Conference power rankings'},
   receipts:   {shape:'wide', get: id => receipts(id), draw: cardReceipts, name: r => `LTF picks, week ${r.week}`},
@@ -329,6 +482,11 @@ async function drawCard(kind, id, shape){   // returns a canvas, or null if ther
 /* A Share button names a card ("team:alabama"). The panel draws it and offers what this browser can do with a picture:
    hand it to another app, save it, or copy the page's address. In a preview nothing can be saved by a button, so the
    panel says how to save it by hand instead. */
+const okCard = spec => { const [k, ...r] = String(spec).split(':'), c = CARDS[k]; try { return !!(c && c.get(r.join(':'))); } catch(e){ return false; } };
+const okAlts = alts => { const a = (alts || []).filter(x => okCard(x[0])); return a.length > 1 ? a : null; };      // the choices row only shows when there is more than one picture to choose from
+const rankCards = gk => confBySlug[gk] ? {card:'conference:' + gk, alts:[['conference:' + gk, 'All teams'], ['tiers:' + gk, 'Tiers'], ['conferences', 'Every conference']]}
+  : gk === 'all' ? {card:'top25', alts:[['top25', 'Top 25'], ['top10', 'Top 10'], ['tiers', 'Tiers'], ['movers', 'Biggest movers'], ['top25:p4', 'Power 4'], ['top25:g6', 'Group of 6']]}
+  : {card:'top25:' + gk, alts:[['top25:' + gk, 'Top 25'], ['top10:' + gk, 'Top 10'], ['tiers:' + gk, 'Tiers'], ['top25', 'National']]};
 const shareBtn = (spec, label, cls, alts) => `<button type="button" class="${cls || 'btn sharebtn'}" data-card="${esc(spec)}"${alts ? ` data-alts="${esc(alts.map(a => a.join('=')).join('|'))}"` : ''}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V2.5M5.5 6.5L10 2l4.5 4.5M3 11v6h14v-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg>${label || 'Share'}</button>`;
 const sheet = {opener: null, url: null, blob: null, name: '', spec: ''};
 function closeSheet(){
@@ -381,7 +539,8 @@ function sheetClick(b){   // a button inside the panel
 /* ---------- pictures for link previews ---------- */
 /* During the daily update a browser opens the site with #!cards=team/alabama,game/123,... after the address. Instead of
    drawing a page, the site draws those cards and leaves them in the document for the update to collect. */
-const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', ''], 'list/buysell': ['buysell', '']};
+const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', ''], 'list/buysell': ['buysell', ''],
+                    'list/radar': ['radar', ''], 'list/upsets': ['upsets', ''], 'list/movers': ['movers', ''], 'list/momentum': ['momentum', ''], 'list/luck': ['luck', '']};
 async function exportCards(list){
   const out = {};
   for (const name of list){

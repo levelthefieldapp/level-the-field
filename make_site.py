@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "src")
-JS = ["core.js", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
+JS = ["core.js", "brand.js", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
       "momentum.js", "scorecard.js", "cards.js", "app.js"]
 NAME = "Level the Field"
 SHARE = ("Every college football team on one scale, built from this season's games and nothing else. "
@@ -61,6 +61,16 @@ PAGES = {
 }
 DETAIL = {"team", "game", "conference"}                      # pages that take a name or a number after them
 RETIRED = {"spread": "picks", "model": "scorecard", "reputation": "radar"}      # the same list as MOVED in src/app.js
+
+
+def body_html():
+    """The page shell, with the logo mark drawn in from static/brand/mark.svg so it shows before any script runs."""
+    mark = open(os.path.join(HERE, "static", "brand", "mark.svg"), encoding="utf-8").read().strip()
+    mark = re.sub(r'<title>.*?</title>', '', mark).replace('role="img" aria-label="Level the Field"', 'class="mark" aria-hidden="true" focusable="false"')
+    first = re.sub(r'(<svg[^>]*>)(.*)(</svg>)', r'\1<g id="ltf-mark">\2</g>\3', mark, flags=re.S)     # drawn once, then reused by the menu
+    again = re.sub(r'(<svg[^>]*>).*(</svg>)', r'\1<use href="#ltf-mark"/>\2', mark, flags=re.S)
+    body = rd("body.html")
+    return body.replace("<!--mark-->", first, 1).replace("<!--mark-->", again)
 
 
 def rd(name):
@@ -132,7 +142,7 @@ def single_page(data):
     blob = json.dumps(data, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
     head = rd("head.html").replace("<!--share-->\n", "")
     js = "\n".join(rd(f) for f in JS)
-    return head + "<style>" + rd("site.css") + "</style>" + rd("body.html") + "<script>\nconst D = " + blob + ";\n" + js + "</script>" + rd("tail.html")
+    return head + "<style>" + rd("site.css") + "</style>" + body_html() + "<script>\nconst D = " + blob + ";\n" + js + "</script>" + rd("tail.html")
 
 
 # ---------------------------------------------------------------- the published site
@@ -150,7 +160,7 @@ def head_tags(prefix, title, desc, v, url=None, path="", image="og.png", counter
            f'<link rel="icon" href="{prefix}favicon.svg" type="image/svg+xml">',
            f'<link rel="icon" href="{prefix}favicon.png" type="image/png" sizes="96x96">',
            f'<link rel="apple-touch-icon" href="{prefix}apple-touch-icon.png">',
-           '<meta name="theme-color" content="#000000">', f'<meta name="apple-mobile-web-app-title" content="{NAME}">',
+           '<meta name="theme-color" content="#10201A">', f'<meta name="apple-mobile-web-app-title" content="{NAME}">',
            '<meta property="og:type" content="website">', f'<meta property="og:site_name" content="{NAME}">',
            f'<meta property="og:title" content="{esc(title)}">', f'<meta property="og:description" content="{esc(desc)}">',
            '<meta name="twitter:card" content="summary_large_image">']
@@ -170,7 +180,7 @@ def head_tags(prefix, title, desc, v, url=None, path="", image="og.png", counter
 
 def shell(prefix, head, static, v):
     """One page of the site. `static` is what shows for a moment before the page draws itself, and what a search engine reads."""
-    body = rd("body.html")
+    body = body_html()
     assert body.count('<section id="view"></section>') == 1, "src/body.html has lost its empty view section"
     body = body.replace('<section id="view"></section>', f'<section id="view">{static}</section>')
     return head + body + f'<script src="{prefix}data.js?v={v}"></script>\n<script src="{prefix}app.js?v={v}"></script>' + rd("tail.html")
@@ -326,14 +336,15 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
     week = [g for g in data["games"] if g["h"] in st and g["a"] in st and g["w"] in (m.get("next"), m["through"])]
     confs = sorted({t["c"] for t in data["teams"] if t["c"] != "Independent"})
     wanted = ["list/top10"] + [f"team/{slug(n)}" for n in st] + [f"game/{g['id']}" for g in week] + [f"conference/{slug(c)}" for c in confs] + \
-             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell"]
+             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell", "list/radar", "list/upsets", "list/movers", "list/momentum", "list/luck"]
     have = draw_cards(out, wanted) if cards else set()
     pic = lambda name, fallback="og.png": f"cards/{name}.png" if name in have else fallback
     if "list/top10" in have:      # the front page and the rankings share the top 10 as their preview
         write(os.path.join(out, "index.html"), shell("", head_tags("", NAME, SHARE, v, url, "", pic("list/top10"), counter), static_view("", NAME, [SHARE, lead], nav), v))
 
     pages = [""]
-    special = {"rankings": "list/top10", "conferences": "list/conferences", "leagues": "list/conferences", "radar": "list/polls", "recap": "list/receipts", "scorecard": "list/receipts", "buysell": "list/buysell"}
+    special = {"rankings": "list/top10", "conferences": "list/conferences", "leagues": "list/conferences", "radar": "list/radar" if "list/radar" in have else "list/polls", "recap": "list/receipts", "scorecard": "list/receipts", "buysell": "list/buysell",
+               "upsets": "list/upsets", "momentum": "list/momentum", "luck": "list/luck"}
     for key, (title, desc) in PAGES.items():
         paras = [desc, lead] if key in ("rankings", "teams", "picks", "games", "weights") else [desc]
         page = shell("../", head_tags("../", title, desc, v, url, f"{key}/", pic(special.get(key, "-")), counter), static_view("../", title, paras, nav), v)

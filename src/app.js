@@ -1,19 +1,43 @@
 /* ================= the frame around every page ================= */
 const $ = id => document.getElementById(id);
 const view = $('view'), pop = $('pop');
-/* Six doors. The front page is this week. Every other section opens on its main page and shows a short row of its own
-   pages under the header, so the pages that belong together are always one click apart. */
+/* Six doors and sixteen pages. The front page is this week. Every other section opens on its main page and shows a short
+   row of its own pages under the header. Pages that answer the same question share one entry and show as tabs at the
+   top of the page (HUBS). Every one of them keeps its own address, so no old link breaks. About and Contact live in the footer. */
 const SECTIONS = [
   {k:'home', label:'This week', pages:[]},
-  {k:'rankings', label:'Rankings', pages:[['rankings','LTF rankings'],['weights','Build your own'],['conferences','Conferences'],['leagues','League strength'],['momentum','Momentum'],['radar','Under the radar'],['luck','Luck']]},
-  {k:'games', label:'Games', pages:[['games','Scores and schedule'],['picks','Picks'],['upsets','Upset watch'],['buysell','Buying and selling'],['recap','Recap']]},
-  {k:'teams', label:'Teams', pages:[['teams','All teams'],['stats','Stats'],['compare','Compare'],['blind','Blind résumé']]},
-  {k:'playoff', label:'Playoff', pages:[['playoff','Bracket'],['odds','Season odds']]},
-  {k:'scorecard', label:'Track record', pages:[['scorecard','Scorecard'],['track','LTF track record'],['vsline','Against the line'],['inputs','What goes in'],['how','How it works'],['about','About']]},
+  {k:'rankings', label:'Rankings', pages:[['rankings','LTF rankings'],['conferences','Conferences'],['momentum','Trends'],['weights','Build your own']]},
+  {k:'games', label:'Games', pages:[['games','Games and picks'],['upsets','Upset watch'],['buysell','Buying and selling'],['recap','Recap']]},
+  {k:'teams', label:'Teams', pages:[['teams','All teams'],['compare','Compare'],['stats','Stats'],['blind','Blind résumé']]},
+  {k:'playoff', label:'Playoff', pages:[['playoff','Playoff']]},
+  {k:'scorecard', label:'Track record', pages:[['scorecard','Track record'],['how','How it works']]},
 ];
-const PARENT = {team:'teams', game:'games', conference:'conferences', contact:'about'};      // a detail page lights up the page it sits under
-const ALLPAGES = [...SECTIONS.flatMap(s => s.pages), ['contact','Contact']];
-const sectionOf = page => SECTIONS.find(s => s.k === page || s.pages.some(p => p[0] === page)) || null;
+const HUBS = {
+  conferences: [['conferences','By conference'], ['leagues','League strength']],
+  momentum: [['momentum','Momentum'], ['luck','Luck'], ['radar','Under the radar']],
+  games: [['games','Scores and schedule'], ['picks','Picks']],
+  playoff: [['playoff','Bracket'], ['odds','Season odds']],
+  scorecard: [['scorecard','This season'], ['track','Past seasons'], ['vsline','Against the line']],
+  how: [['how','How it works'], ['inputs','What goes in']],
+};
+const HUB_OF = Object.fromEntries(Object.entries(HUBS).flatMap(([h, tabs]) => tabs.map(([k]) => [k, h])));
+const PARENT = {team:'teams', game:'games', conference:'conferences'};      // a detail page lights up the page it sits under
+const SITE_PAGES = [['about','About'], ['contact','Contact']];
+const ALIASES = [['scorecard','Scorecard'], ['track','LTF track record'], ['weights','Your own weights'], ['radar','Polls vs LTF']];      // names people may still search for
+const ALLPAGES = [...SECTIONS.flatMap(s => s.pages), ...Object.values(HUBS).flat(), ...SITE_PAGES, ...ALIASES].filter((p, i, a) => a.findIndex(q => q[1] === p[1]) === i);      // for search: every page by every name it goes by
+const entryOf = page => HUB_OF[page] || page;
+const sectionOf = page => SECTIONS.find(s => s.k === page || s.pages.some(p => p[0] === entryOf(page))) || null;
+const hubTabs = page => { const h = HUB_OF[page]; if (!h) return '';
+  const keep = R.q.group ? {group: R.q.group} : null;
+  return `<nav class="ptabs" aria-label="${esc(sectionOf(page) ? (sectionOf(page).pages.find(p => p[0] === h) || [h, ''])[1] : '')}">${HUBS[h].map(([k, l]) => `<a href="${L(k, null, k === 'momentum' || k === 'luck' ? keep : null)}"${k === page ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`; };
+const ICON = {
+  home: '<path d="M3 11l9-7 9 7v9.5H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+  rankings: '<path d="M4 20V11M10 20V4M16 20v-7M2 20.5h20" fill="none" stroke="currentColor" stroke-width="2.2"/>',
+  games: '<rect x="3" y="5" width="18" height="15.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 2.5v4M16 2.5v4" stroke="currentColor" stroke-width="2"/>',
+  playoff: '<path d="M2.5 5h5v4h-5zM2.5 15h5v4h-5zM7.5 7H11v10H7.5M11 12h5.5M16.5 10h5v4h-5z" fill="none" stroke="currentColor" stroke-width="2"/>',
+  more: '<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+};
+const icon = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 const VIEWS = {home:viewHome, rankings:viewRankings, teams:viewTeams, team:viewTeam, conferences:viewConferences, conference:viewConference,
                games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, upsets:viewUpsets, buysell:viewBuySell, vsline:viewVsLine, leagues:viewLeagues, inputs:viewInputs,
                track:viewTrack, weights:viewWeights, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
@@ -28,26 +52,52 @@ function ribbon(){
 function shell(){
   const here = PARENT[R.page] || R.page, sec = sectionOf(here), cur = k => k === here ? ' aria-current="page"' : '';
   const links = arr => arr.map(([k,l]) => `<a href="${L(k)}"${cur(k)}>${l}</a>`).join('');
-  $('nav').innerHTML = SECTIONS.map(s => `<a href="${L(s.k)}"${s === sec ? (s.pages.length ? ' class="on"' : ' aria-current="page"') : ''}>${s.label}</a>`).join('');
-  const sub = sec && sec.pages.length ? sec.pages : null;
-  $('subbar').hidden = !sub; $('subnav').innerHTML = sub ? `<span class="sublab">${sec.label}</span>${links(sub)}` : '';
-  if (sub){ const on = $('subnav').querySelector('[aria-current]'); if (on && on.scrollIntoView) try { on.scrollIntoView({block:'nearest', inline:'center'}); } catch(e){} }
-  $('menunav').innerHTML = SECTIONS.map(s => s.pages.length ? `<h3>${s.label}</h3>${links(s.pages)}` : `<a class="top" href="${L(s.k)}"${cur(s.k)}>${s.label}</a>`).join('') + `<h3>The site</h3>${links([['contact','Contact']])}`;
+  const entry = entryOf(here), on = k => k === entry ? ' aria-current="page"' : '';
+  $('nav').innerHTML = SECTIONS.map(s => `<a href="${L(s.k)}"${s === sec ? (s.pages.length > 1 ? ' class="on"' : ' aria-current="page"') : ''}>${s.label}</a>`).join('');
+  const sub = sec && sec.pages.length > 1 ? sec.pages : null;
+  $('subbar').hidden = !sub; $('subnav').setAttribute('aria-label', sec ? `${sec.label} pages` : 'Pages in this section');
+  $('subnav').innerHTML = sub ? sub.map(([k,l]) => `<a href="${L(k)}"${on(k)}>${l}</a>`).join('') : '';
+  if (sub){ const o = $('subnav').querySelector('[aria-current]'); if (o && o.scrollIntoView && $('subnav').scrollWidth > $('subnav').clientWidth) try { o.scrollIntoView({block:'nearest', inline:'center'}); } catch(e){} }
+  const open = s => s === sec ? ' open' : '';
+  $('menunav').innerHTML = `<a class="top" href="${L('home')}"${here === 'home' ? ' aria-current="page"' : ''}>This week</a>`
+    + SECTIONS.filter(s => s.pages.length > 1).map(s => `<details${open(s)}><summary>${s.label}</summary>${s.pages.map(([k,l]) => `<a href="${L(k)}"${on(k)}>${l}</a>`).join('')}</details>`).join('')
+    + SECTIONS.filter(s => s.k !== 'home' && s.pages.length === 1).map(s => `<a class="top" href="${L(s.k)}"${s === sec ? ' aria-current="page"' : ''}>${s.label}</a>`).join('')
+    + `<div class="mfoot">${links(SITE_PAGES)}</div>`;
+  const inTab = k => sec && sec.k === k;
+  $('tabbar').innerHTML = [['home','This week','home'], ['rankings','Rankings','rankings'], ['games','Games','games'], ['playoff','Playoff','playoff']].map(([k, l, ic]) =>
+      `<a href="${L(k)}"${inTab(k) ? ' aria-current="page"' : ''}>${icon(ic)}${l}</a>`).join('')
+    + `<button type="button" id="menuBtn" aria-controls="menu" aria-expanded="${document.body.classList.contains('menu-open')}"${sec && !['home','rankings','games','playoff'].includes(sec.k) || !sec ? ' class="here"' : ''}>${icon('more')}More</button>`;
   document.querySelectorAll('a.brand').forEach(a => { a.setAttribute('href', L('home')); });
-  $('ribbon').innerHTML = ribbon(); document.body.classList.toggle('at-home', R.page === 'home');
+  $('ribbon').innerHTML = ribbon(); document.body.classList.toggle('at-home', R.page === 'home'); document.body.classList.toggle('show-ribbon', ['home', 'games', 'picks'].includes(R.page));
   const col = (h, arr) => `<div><h3>${h}</h3>${arr.map(([k,l]) => `<a href="${L(k)}">${l}</a>`).join('')}</div>`;
   const off = store.get('ltf.logos') === false;
-  $('foot').innerHTML = `<nav class="fnav" aria-label="Footer">${SECTIONS.filter(s => s.pages.length).map(s => col(s.label, s.k === 'scorecard' ? [...s.pages, ['contact','Contact']] : s.pages)).join('')}</nav>
-    <p class="fine"><b>${esc(BRAND)}</b> Every team, one scale. This season only. ${M.season} season, LTF Index through week ${M.through}. Updated ${builtTxt(true)}.${STALE ? ' The daily update has not run since then.' : ''}</p>
+  $('foot').innerHTML = `<nav class="fnav" aria-label="Footer">${SECTIONS.filter(s => s.pages.length > 1).map(s => col(s.label, s.pages)).join('')}${col('The site', [['home','This week'], ['playoff','Playoff'], ...SITE_PAGES])}</nav>
+    <p class="brandline">${markSvg('mark')}<b>${esc(BRAND)}</b></p>
+    <p class="fine">Every team, one scale. This season only. ${M.season} season, LTF Index through week ${M.through}. Updated ${builtTxt(true)}.${STALE ? ' The daily update has not run since then.' : ''}</p>
     ${LOGO_OK && !LOGOS_OFF ? `<p class="fine">Team logos are ${off ? 'off' : 'on'}. <button type="button" class="more inl" data-logos="${off ? 'on' : 'off'}">${off ? 'Show logos' : 'Use team colors instead'}</button></p>` : ''}
     <p class="fine">Built from this season's games and nothing else: no polls, no preseason rankings, no betting lines. For fun and for arguments. Nothing here is betting advice. This site is independent and is not connected to any school, conference or sportsbook. Team names, colors and logos belong to the schools. Data from the public cfbfastR data sets and the CollegeFootballData.com API.</p>`;
 }
-function controls(show){
-  $('controls').hidden = !show; if (!show) return;
+function controls(show, v){
+  $('controls').hidden = !show; $('ctlx').innerHTML = show && v && v.ctl ? v.ctl : ''; if (!show){ document.body.classList.remove('has-filters'); return; }
   const k = groupKey();
   $('groupseg').innerHTML = ['all','p4','g6'].map(g => `<a data-keep href="${Lq({group: g==='all' ? null : g})}" aria-current="${k===g}">${GROUPS[g]}</a>`).join('');
   $('conf').value = GROUPS[k] ? '' : k;
   const f = $('find'); if (document.activeElement !== f) f.value = R.q.find || '';
+  // on a phone the conference, the search box and any week picker sit behind one Filter button. It says how many are in use.
+  const n = (GROUPS[k] ? 0 : 1) + (R.q.find ? 1 : 0) + (R.q.week && document.querySelector('#view .fhide [aria-current="true"]') ? 1 : 0);
+  document.body.classList.add('has-filters');
+  $('filterBtn').innerHTML = `${FILTER_ICON}Filter${n ? ` <span class="fcount">${n}</span>` : ''}`;
+}
+const FILTER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg>';
+/* A grey line under a section heading says what the section shows. It is tucked behind a small "i" button next to the
+   heading, so the lists come first. The page-wide explanation sits behind "About this page" the same way. */
+function tuckHints(){
+  view.querySelectorAll('.sec>h2+.hint, .panel>h2+.hint').forEach((p, i) => {
+    const h = p.previousElementSibling, id = 'hint' + i, wrap = document.createElement('div');
+    wrap.className = 'shead'; h.parentNode.insertBefore(wrap, h); wrap.appendChild(h);
+    wrap.insertAdjacentHTML('beforeend', `<button type="button" class="ibtn" aria-expanded="false" aria-controls="${id}" aria-label="What this shows"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 10.5v6.5M12 7v.6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>`);
+    p.id = id; p.hidden = true; p.classList.add('tucked');
+  });
 }
 function chrome(){   // everything outside the page body
   shell();
@@ -61,9 +111,10 @@ function render(){
   if (MOVED[R.page]){ go(L(MOVED[R.page]), {replace:true}); return; }
   const v = (VIEWS[R.page] || viewNotFound)();
   document.title = v.title ? `${v.title} | ${BRAND}` : BRAND;
-  $('top').innerHTML = chrome() + fillTop(v.top, v);
-  controls(!!v.controls);
+  $('top').innerHTML = chrome() + hubTabs(R.page) + fillTop(v.top, v);
+  controls(!!v.controls, v);
   view.innerHTML = v.body;
+  tuckHints();
   if (v.after) v.after();
   document.documentElement.setAttribute('data-drawn', R.page);      // the publish check looks for this to know the page drew itself
 }
@@ -93,8 +144,9 @@ window.addEventListener('popstate', onUrlChange);
 window.addEventListener('hashchange', onUrlChange);
 
 /* ================= menu, search, definitions ================= */
+let menuOpener = null;
 function closeMenus(){
-  document.body.classList.remove('menu-open'); $('menuBtn').setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('menu-open'); ['menuBtn', 'searchBtn'].forEach(id => { const b = $(id); if (b) b.setAttribute('aria-expanded', 'false'); });
   document.querySelectorAll('.sres').forEach(r => { r.hidden = true; });
   document.querySelectorAll('.gs').forEach(i => { i.value = ''; });
   document.querySelectorAll('.nav details[open]').forEach(d => { d.open = false; });
@@ -175,16 +227,21 @@ document.addEventListener('click', e => {
   if (b.dataset.card){ openSheet(b.dataset.card, b, b.dataset.alts ? b.dataset.alts.split('|').map(x => x.split('=')) : null); return; }
   if (b.id === 'sheetClose'){ closeSheet(); return; }
   if (b.dataset.sheet){ sheetClick(b); return; }
-  if (b.dataset.about != null){ const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); return; }
-  if (b.id === 'menuBtn'){ document.body.classList.add('menu-open'); b.setAttribute('aria-expanded', 'true'); const i = document.querySelector('#menu .gs'); if (i) i.focus({preventScroll:true}); }
-  else if (b.id === 'menuClose'){ closeMenus(); $('menuBtn').focus(); }
+  if (b.dataset.about != null){ const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); document.body.classList.toggle('about-open', open); return; }
+  if (b.classList.contains('ibtn') && b.hasAttribute('aria-controls')){ const open = b.getAttribute('aria-expanded') !== 'true', p = $(b.getAttribute('aria-controls')); b.setAttribute('aria-expanded', String(open)); if (p) p.hidden = !open; return; }
+  if (b.id === 'filterBtn'){ const open = !document.body.classList.contains('filters-open'); document.body.classList.toggle('filters-open', open); b.setAttribute('aria-expanded', String(open)); return; }
+  if (b.id === 'menuBtn' || b.id === 'searchBtn'){      // More opens the menu with nothing focused, so a phone keyboard stays down. The search button means to type.
+    menuOpener = b; document.body.classList.add('menu-open'); b.setAttribute('aria-expanded', 'true');
+    if (b.id === 'searchBtn'){ const i = document.querySelector('#menu .gs'); if (i) i.focus({preventScroll:true}); } else $('menuClose').focus({preventScroll:true});
+  }
+  else if (b.id === 'menuClose'){ closeMenus(); if (menuOpener && document.contains(menuOpener)) menuOpener.focus(); else if ($('menuBtn')) $('menuBtn').focus(); }
   else if (b.dataset.zoom){ if (b.dataset.zoom === 'reset') plotReset(); else plotZoom(b.dataset.zoom === 'in' ? 1.6 : 1/1.6); }
   else if (b.dataset.logos){ store.set('ltf.logos', b.dataset.logos === 'on'); render(); }
   else if (b.dataset.follow){ const cur = favs().map(x => x.slug), sl = b.dataset.follow; store.set('ltf.favs', cur.includes(sl) ? cur.filter(x => x !== sl) : [...cur, sl]); store.set('ltf.fav', null); render(); }
   else if (b.dataset.dismiss){ store.set('ltf.started', true); render(); }
   else if (b.id === 'reset' || b.dataset.resetw){ W = {...DEFAULTS}; store.set('ltf.weights', W); recompute(); const q = {...R.q}; delete q.w; go(L(R.page, R.id, q), {replace:true, keep:true}); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape'){ hidePop(); closeSheet(); if (document.body.classList.contains('menu-open')){ closeMenus(); $('menuBtn').focus(); } } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape'){ hidePop(); closeSheet(); if (document.body.classList.contains('menu-open')){ closeMenus(); const b = menuOpener && document.contains(menuOpener) ? menuOpener : $('menuBtn'); if (b) b.focus(); } } });
 $('conf').addEventListener('change', e => go(Lq({group: e.target.value || null}), {replace:true, keep:true}));
 $('find').addEventListener('input', e => go(Lq({find: e.target.value.trim() ? e.target.value : null}), {replace:true, keep:true}));
 view.addEventListener('change', e => { const k = e.target.dataset && e.target.dataset.pick; if (k) go(Lq({[k]: e.target.value}), {replace:true, keep:true}); });
