@@ -318,7 +318,10 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
                 shutil.copy(os.path.join(logo_dir, sub, name), os.path.join(out, "logos", sub, name))
 
     # the shared files
-    site = {"hosted": True, "paths": True, "url": url, "logos": logos, "counter": counter or None}
+    # on GitHub, the repository's name and branch let pages link to the ledger's dated history, the public record of every pick
+    repo = os.environ.get("GITHUB_REPOSITORY") if re.fullmatch(r"[\w.-]+/[\w.-]+", os.environ.get("GITHUB_REPOSITORY", "")) else None
+    branch = os.environ.get("GITHUB_REF_NAME") if re.fullmatch(r"[\w./-]+", os.environ.get("GITHUB_REF_NAME", "")) else None
+    site = {"hosted": True, "paths": True, "url": url, "logos": logos, "counter": counter or None, "repo": repo, "branch": branch}
     js = swap_line("\n".join(rd(f) for f in JS), "const SITE = ", "const SITE = " + json.dumps(site, separators=(",", ":")) + ";")
     blob = "const D = " + json.dumps(data, separators=(",", ":"), ensure_ascii=False) + ";\n"
     css = FONT_CSS + rd("site.css")

@@ -1,14 +1,14 @@
 /* ================= playoff ================= */
-function playoffField(){
-  const br = byRank();
-  const autos = CONFS.filter(c => c.tier==='P4').sort((a,b) => a.sorted[0].rank-b.sorted[0].rank).map(c => ({t:c.sorted[0], why:`${c.name} leader`, auto:true}));
+function playoffField(by){      // by 'res': the same rules, with teams ordered by résumé instead of the LTF Index
+  const br = by === 'res' ? byResume() : byRank(), pos = new Map(br.map((t, i) => [t, i + 1])), rk = t => pos.get(t);
+  const autos = CONFS.filter(c => c.tier==='P4').map(c => { const lead = br.find(t => t.c === c.name); return {t:lead, why:`${c.name} leader`, auto:true}; }).sort((a,b) => rk(a.t)-rk(b.t));
   const g6 = br.find(t => t.tier==='G6' && t.c !== 'Independent');
   autos.push({t:g6, why:`Top Group of 6 team`, auto:true});
   const nd = byName['Notre Dame'];
-  if (nd && nd.rank <= 12) autos.push({t:nd, why:'Notre Dame, inside the top 12', auto:true});
+  if (nd && rk(nd) <= 12) autos.push({t:nd, why:'Notre Dame, inside the top 12', auto:true});
   const field = new Map(autos.map(a => [a.t, a]));
   for (const t of br){ if (field.size >= 12) break; if (!field.has(t)) field.set(t, {t, why:'At-large', auto:false}); }
-  const seeds = [...field.values()].sort((x,y) => x.t.rank-y.t.rank);       // automatic bids outside the top 12 fall to the bottom on their own
+  const seeds = [...field.values()].sort((x,y) => rk(x.t)-rk(y.t));       // automatic bids outside the top 12 fall to the bottom on their own
   seeds.forEach((s,i) => { s.seed = i+1; });
   return {seeds, out: br.filter(t => !field.has(t)).slice(0,4)};
 }
@@ -25,7 +25,8 @@ function bracketOdds(seeds){   // every team's chance to get through each round,
   return {first, qf, sf, ch};
 }
 function viewPlayoff(){
-  const {seeds, out} = playoffField(), S = n => seeds[n-1], sim = simulate(M.through), bo = bracketOdds(seeds);
+  const res = R.q.by === 'resume', {seeds, out} = playoffField(res ? 'res' : null), S = n => seeds[n-1], sim = simulate(M.through), bo = bracketOdds(seeds);
+  const bySeg = `<div class="seg" role="group" aria-label="Seed the bracket by"><a data-keep href="${Lq({by: null})}" aria-current="${!res}">Seeded by the LTF Index</a><a data-keep href="${Lq({by: 'resume'})}" aria-current="${res}">Seeded by résumé</a></div>`;
   const dates = M.season === 2026 ? ['Dec. 18 and 19, at the higher seed', 'Dec. 30 and Jan. 1, at bowl sites', 'Jan. 14 and 15', 'Jan. 25 in Las Vegas'] : ['At the higher seed', 'At bowl sites', '', ''];
   const tm = (s, p, o = {}) => `<div class="tm${o.fav ? ' fav' : ''}${o.proj ? ' proj' : ''}"><span class="sd">${s.seed}</span>${badge(s.t,'sm')}<a href="${teamL(s.t)}">${esc(o.short ? s.t.ab : s.t.n)}</a><span class="pc">${pct(p)}</span></div>`;
   const slot = inner => `<div class="slot">${inner}</div>`;
@@ -40,18 +41,19 @@ function viewPlayoff(){
       <div class="champ" style="--tc:${esc(champ[0].t.col)};--tf:${champ[0].t.fg}"><span>Most likely champion</span><b>${esc(champ[0].t.n)}</b><span>${pct(champ[1])} to win it all</span></div>`);
   const rd = (cls, title, when, inner) => `<div class="rd ${cls}"><h3>${title}<small>${when}</small></h3><div class="ms">${inner}</div></div>`;
   const bracket = `<div class="bkwrap"><div class="bk" role="group" aria-label="Playoff bracket">${rd('r1','First round',dates[0],r1)}${rd('r2','Quarterfinals',dates[1],r2)}${rd('r3','Semifinals',dates[2],r3)}${rd('r4','Championship',dates[3],r4)}</div></div>`;
-  const seedRow = s => `<div class="seed"><span class="pr">${s.seed}</span>${badge(s.t)}<span>${tl(s.t)} ${mvTxt(s.t)}<small>${s.t.w}-${s.t.l}, No. ${s.t.rank}${s.t.prevRank != null && s.t.prevRank !== s.t.rank ? `, was ${s.t.prevRank}` : ''}. Makes the field in ${pct(sim[s.t.n].po)} of simulated seasons</small></span><span class="tag${s.auto?' o':''}">${s.seed<=4?'Bye. ':''}${esc(s.why)}</span></div>`;
+  const seedRow = s => `<div class="seed"><span class="pr">${s.seed}</span>${badge(s.t)}<span>${tl(s.t)} ${res ? '' : mvTxt(s.t)}<small>${res ? `${s.t.w}-${s.t.l}, ${ord(s.t.rk.res)} by résumé, No. ${s.t.rank} in the LTF Index` : `${s.t.w}-${s.t.l}, No. ${s.t.rank}${s.t.prevRank != null && s.t.prevRank !== s.t.rank ? `, was ${s.t.prevRank}` : ''}. Makes the field in ${pct(sim[s.t.n].po)} of simulated seasons`}</small></span><span class="tag${s.auto?' o':''}">${s.seed<=4?'Bye. ':''}${esc(s.why)}</span></div>`;
   const orow = s => `<tr><td class="num rk">${s.seed}</td>${teamCell(s.t)}<td class="num wide">${s.t.rank}</td><td class="num wide">${lastWeek(s.t)}</td>
       <td class="num c pos" style="--t:${s.adv.r1.toFixed(2)}">${s.seed <= 4 ? 'Bye' : pct(s.adv.r1)}</td><td class="num c pos" style="--t:${s.adv.qf.toFixed(2)}">${pct(s.adv.qf)}</td><td class="num c pos wide" style="--t:${s.adv.sf.toFixed(2)}">${pct(s.adv.sf)}</td><td class="num c pos" style="--t:${Math.min(1, s.adv.ch*2).toFixed(2)}"><b>${pct(s.adv.ch)}</b></td></tr>`;
-  return {title:'Playoff picture', lead: `Byes today: ${list(seeds.slice(0,4).map(s => tl(s.t)))}. Last team in: ${tl(S(12).t)}. First team out: ${tl(out[0])}. Most likely champion: ${tl(champ[0].t)}, ${pct(champ[1])}.`,
-    top: pageTop('Playoff picture', `If the season ended after week ${M.through} and the committee went by the LTF Index, this would be the 12-team bracket.`),
-    body: `<section class="sec"><h2>The bracket</h2><p class="hint">Seeds 5 through 12 play the first round on campus, and the top four seeds get a bye to the quarterfinals. Each percentage is that team's chance to win that round, from the LTF line for every opponent they could meet. Later rounds show the most likely teams. Scroll sideways on a phone.</p>${bracket}</section>
+  const ltfSeeds = res ? playoffField().seeds : seeds, moved = res ? seeds.filter(s => !ltfSeeds.some(x => x.t === s.t)) : [];
+  return {title:'Playoff picture', lead: `${res ? 'Seeded by résumé. ' : ''}Byes today: ${list(seeds.slice(0,4).map(s => tl(s.t)))}. Last team in: ${tl(S(12).t)}. First team out: ${tl(out[0])}. Most likely champion: ${tl(champ[0].t)}, ${pct(champ[1])}.${res && moved.length ? ` In this field but not the LTF Index one: ${list(moved.map(s => tl(s.t)))}.` : ''}`,
+    top: pageTop('Playoff picture', res ? `If the season ended after week ${M.through} and the committee seeded by résumé, who has earned the most, this would be the 12-team bracket. Every game in it is still decided by the LTF line.` : `If the season ended after week ${M.through} and the committee went by the LTF Index, this would be the 12-team bracket.`),
+    body: `${bySeg}<section class="sec"><h2>The bracket</h2><p class="hint">Seeds 5 through 12 play the first round on campus, and the top four seeds get a bye to the quarterfinals. Each percentage is that team's chance to win that round, from the LTF line for every opponent they could meet. Later rounds show the most likely teams. Scroll sideways on a phone.</p>${bracket}</section>
     <section class="sec"><h2>Chance to advance</h2>
       ${colKey([['Seed', 'Place in the bracket. The top four seeds get a first-round bye.'], ['First round, Quarterfinal, Semifinal', 'The chance the team wins that round.'], ['Title', 'The chance they win the national title from this bracket.']])}
       <div class="scroll"><table class="grid"><thead><tr>${th('Seed','num','seed')}${th('Team')}${th('LTF rank','num wide','ltfrank')}${th('Last week','num wide','lw')}${th('First round','num','adv')}${th('Quarterfinal','num','adv')}${th('Semifinal','num wide','adv')}${th('Title','num','adv')}</tr></thead><tbody>${seeds.map(orow).join('')}</tbody></table></div>
       <p class="hint after">These numbers assume this exact bracket. For each team's chance of making the playoff at all, see the <a class="txt" href="${L('odds')}">season odds</a>.</p></section>
-    <section class="sec"><h2>The field</h2><p class="hint">Seeds follow the LTF ranking, with movement since last week. The top four get a first-round bye.</p><div class="seeds">${seeds.map(seedRow).join('')}</div></section>
-    <section class="sec"><h2>First four out</h2><ol class="rows narrowlist">${out.map(t => rowB(t, t.rank, `${pct(sim[t.n].po)} playoff chance`)).join('')}</ol>
+    <section class="sec"><h2>The field</h2><p class="hint">${res ? 'Seeds follow the résumé ranking. The top four get a first-round bye.' : 'Seeds follow the LTF ranking, with movement since last week. The top four get a first-round bye.'}</p><div class="seeds">${seeds.map(seedRow).join('')}</div></section>
+    <section class="sec"><h2>First four out</h2><ol class="rows narrowlist">${out.map(t => res ? rowB(t, t.rk.res, `No. ${t.rank} in the LTF Index`) : rowB(t, t.rank, `${pct(sim[t.n].po)} playoff chance`)).join('')}</ol>
       <p class="next"><a class="txt" href="${L('odds')}">Every team's chances at the playoff, their conference title and each win total</a></p></section>
     <section class="sec prose"><h2>How this is put together</h2>
       <p>The ${M.season} playoff has 12 teams. The champions of the ACC, Big Ten, Big 12 and SEC get in automatically, along with the highest-ranked champion from the American, Conference USA, MAC, Mountain West, Pac-12 and Sun Belt. Notre Dame gets a spot if they finish in the top 12. The best remaining teams fill the rest.</p>
@@ -218,7 +220,7 @@ function viewHow(){
   <div class="tw"><table><tbody>${['index','res','off','def','mar','h1','epa','sr','ppd','ppo','net','exp','stop','hav','yds','sor','line','conf','wc','gs','luck','steady','mom','market'].map(def).join('')}</tbody></table></div>
   <p>Garbage time is removed from every play-by-play stat except yards per game, and each number is adjusted for the opponents faced, so it will not match the box score.</p>
   <h2>When the site updates</h2>
-  <p>Scores and picks are refreshed every day in season. The LTF number for a game goes on file when the week before it is in the books, always before kickoff. Once a game kicks off, the number is never changed. It is graded once the game is final. If the formula ever changes, the numbers for games still to be played are refiled under the new formula, and the earlier numbers stay in the record beside them.</p>
+  <p>Scores and picks are refreshed every day in season. The LTF number for a game goes on file when the week before it is in the books, always before kickoff. Once a game kicks off, the number is never changed. It is graded once the game is final.${recordUrl() ? ` Every number on file, and the day it was filed, is in the site's public record on GitHub, which dates each change itself.${recordLink('See the record')}` : ''} If the formula ever changes, the numbers for games still to be played are refiled under the new formula, and the earlier numbers stay in the record beside them.</p>
   <p>The LTF Index moves once a week. A week turns over when nearly all of its games are final and their play-by-play has arrived, which is usually Sunday. Until then a team that played on a Tuesday or a Thursday shows the new score and record, and keeps the rank they had. This keeps the rankings from moving on half a Saturday.</p>
   <p>The numbers on this page were last rebuilt on ${builtTxt(true)}.</p>
   <h2>Where the data comes from</h2>

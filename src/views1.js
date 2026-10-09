@@ -112,12 +112,37 @@ function viewHome(){
 }
 
 /* ================= rankings ================= */
-const rankSeg = on => `<div class="seg viewseg" role="group" aria-label="How to show the rankings"><a data-keep href="${Lq({view:null})}" aria-current="${on === 'list'}">List</a><a data-keep href="${Lq({view:'tiers', week:null, sort:null, dir:null})}" aria-current="${on === 'tiers'}">Tiers</a></div>`;
+const rankSeg = on => `<div class="seg viewseg" role="group" aria-label="How to show the rankings"><a data-keep href="${Lq({view:null})}" aria-current="${on === 'list'}">List</a><a data-keep href="${Lq({view:'tiers', week:null, sort:null, dir:null})}" aria-current="${on === 'tiers'}">Tiers</a><a data-keep href="${Lq({view:'resume', week:null, sort:null, dir:null})}" aria-current="${on === 'resume'}">Résumé</a></div>`;
+/* the résumé ranking: who has earned the most so far, by the résumé part of the LTF Index alone */
+const byResume = () => [...T].sort((a, b) => b.z.res - a.z.res || a.rank - b.rank);
+const worstLoss = t => { const ls = t.g.filter(g => g.pf < g.pa); if (!ls.length) return null;
+  return ls.map(g => ({g, o: byName[g.opp]})).sort((a, b) => (b.o ? b.o.rank : 999) - (a.o ? a.o.rank : 999))[0]; };
+function viewResume(){
+  const q = findText(), pool = byResume().filter(inGroup), gk = groupKey();
+  pool.forEach((t, i) => { t.rsrank = i + 1; });
+  const rows = q ? pool.filter(t => t.n.toLowerCase().includes(q) || t.ab.toLowerCase() === q) : pool;
+  const gapChip = t => { const v = t.rank - t.rk.res; return Math.abs(v) < 5 ? '' : `<span class="sflag even" title="${v > 0 ? `${v} spots higher by résumé than in the LTF Index` : `${-v} spots lower by résumé than in the LTF Index`}">${v > 0 ? 'Résumé ahead of play' : 'Play ahead of résumé'}</span>`; };
+  const loss = t => { const w = worstLoss(t); if (!w) return '<span class="cf">None</span>'; return w.o ? `${tl(w.o)} <span class="cf">No. ${w.o.rank}</span>` : `${esc(w.g.opp)} <span class="cf">FCS</span>`; };
+  const showNat = gk !== 'all';
+  const body = rows.map(t => `<tr><td class="num rk">${t.rsrank}</td>${showNat ? `<td class="num nat">${t.rk.res}</td>` : ''}${teamCell(t, true, true)}<td class="num rec hide480">${t.w}-${t.l}</td>
+    <td class="num"><b>${t.d.sor.toFixed(1)}</b></td><td class="num">${t.d.qw.length}</td><td class="wide">${loss(t)}</td><td class="num wide">${t.rk.sos}</td><td class="num">${t.rank}</td><td class="wide">${gapChip(t)}</td></tr>`).join('');
+  const table = `<div class="scroll"><table class="grid"><thead><tr>${th('Rank','num')}${showNat ? th('National','num','nat') : ''}${th('Team')}${th('Record','num hide480')}${th('Strength of record','num','sor')}${th('Top-50 wins','num')}${th('Worst loss','wide')}${th('Schedule','num wide','sos')}${th('LTF rank','num','ltfrank')}${th('','wide')}</tr></thead><tbody>${body || emptyRow(9 + (showNat ? 1 : 0), 'team')}</tbody></table></div>`;
+  const key = colKey([['Strength of record', 'How hard this record would be to match. A 90 means a typical top-25 team would do worse nine times out of ten against the same schedule.'],
+    ['Top-50 wins', 'Wins over teams in the LTF top 50.'], ['Worst loss', 'The lowest-ranked team to beat them.', true], ['Schedule', 'How hard the schedule has been so far, out of ' + T.length + '.', true],
+    ['LTF rank', 'Where the full LTF Index has them, counting how well they have played as well as what they have won.']]);
+  const top = pool[0], apart = pool.filter(t => t.rank - t.rk.res >= 8 && t.rk.res <= 30).sort((a, b) => (b.rank - b.rk.res) - (a.rank - a.rk.res))[0],
+        under = pool.filter(t => t.rk.res - t.rank >= 8 && t.rank <= 30).sort((a, b) => (b.rk.res - b.rank) - (a.rk.res - a.rank))[0];
+  const lead = top ? `${tl(top)} ${gk === 'all' ? 'has the best résumé in the country' : `has the best résumé in the ${esc(groupLabel())}`}: ${top.w}-${top.l}, with ${top.d.qw.length === 1 ? 'one win' : `${NUMW[top.d.qw.length] || top.d.qw.length} wins`} over top-50 teams.${apart ? ` ${tl(apart)} is ${ord(apart.rk.res)} by résumé but ${ord(apart.rank)} in the LTF Index.` : ''}${under ? ` ${tl(under)} goes the other way: ${ord(under.rank)} in the LTF Index, ${ord(under.rk.res)} by résumé.` : ''}` : '';
+  return {title:'Résumé', controls:true, ctl: rankSeg('resume'), lead, card: gk === 'all' ? 'resume' : 'resume:' + gk, alts: [[gk === 'all' ? 'resume' : 'resume:' + gk, 'Top 25'], [gk === 'all' ? 'resume10' : 'resume10:' + gk, 'Top 10']],
+    top: pageTop('Rankings', `<b>${groupLabel()}, by résumé.</b> Who has earned the most so far, not who is best. This is the résumé part of the LTF Index on its own: strength of record, quality wins and scoring margin, all from this season. The full LTF Index also weighs how well a team has played, play by play, so the two lists differ. The résumé lens is the one to use for a playoff argument about who deserves a spot.`),
+    body: key + table + `<p class="next linkrow"><a class="txt" href="${L('playoff', null, {by: 'resume'})}">The playoff bracket seeded by résumé</a></p>`};
+}
 function tierBoard(teams){   // every team in its band, as a wall of marks. This is the picture fans argue over.
   return `<div class="tbands">${TIERS.map(tr => { const ts = teams.filter(t => tierOf(t) === tr); if (!ts.length) return '';
     return `<section class="tband" aria-label="${tr.name}"><h2>${tr.name}<small>LTF Index ${tr.what}</small></h2><div class="tmarks">${ts.map(t => `<a class="tmark" href="${teamL(t)}" title="${esc(t.n)}, No. ${t.rank}, ${t.idx.toFixed(1)}">${logoOf(t, true) ? badge(t,'md') + `<b>${esc(t.ab)}</b>` : chip(t)}<small>${t.rank}</small></a>`).join('')}</div></section>`; }).join('')}</div>`;
 }
 function viewRankings(){
+  if (R.q.view === 'resume') return viewResume();
   if (R.q.view === 'tiers'){
     const q = findText(); let ts = T.filter(inGroup).sort((a,b) => a.rank-b.rank); const all = ts;
     if (q) ts = ts.filter(t => t.n.toLowerCase().includes(q) || t.ab.toLowerCase() === q);
@@ -305,7 +330,7 @@ function viewTeam(){
     <section class="tsec"><h2 class="th2">Still to play</h2>${remaining(t)}</section>`;
   else if (tab === 'stats') pane = `
     <section class="tsec"><h2 class="th2">What makes up the score</h2><table class="parts"><tbody>${parts}</tbody></table></section>
-    <section class="tsec">${statTable(t)}</section>`;
+    <section class="tsec">${statTable(t)}</section>${stPane(t)}`;
   else pane = `
     <section class="tsec"><h2 class="th2">The season ahead</h2><div class="stiles">
       ${tileT(pct(o.po), term('po', 'Make the playoff'))}

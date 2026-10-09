@@ -470,9 +470,75 @@ RAW_KEYS = ["pts", "plays", "yds", "epa", "succ",
             "ra", "ry", "rtd", "rexp", "stuff", "opp4", "ly", "repa", "rsucc",
             "db", "pa", "cmp", "py", "ptd", "int", "sk", "sky", "pexp", "pepa", "psucc",
             "fl", "t3", "c3", "d3", "t4", "c4", "ed", "edepa", "ld", "ldsucc", "nx", "nxepa",
-            "hav", "rz", "rztd", "rzs", "dr", "dpts", "pu", "nr", "nrr"]
+            "hav", "rz", "rztd", "rzs", "dr", "dpts", "pu", "nr", "nrr",
+            # special teams. On field goals and punts the kicking team is the "offense"; on kickoffs the receiving team is.
+            "fga", "fgm", "fgxp", "fgoe", "fga40", "fgm40", "fgblk", "pn", "pyd", "pnet", "pret", "pry", "ptb", "pblk", "prtd",
+            "kof", "kr", "kry", "krtd"]
+ST_KEYS = ["fga", "fgm", "fgxp", "fgoe", "fga40", "fgm40", "fgblk", "pn", "pyd", "pnet", "pret", "pry", "ptb", "pblk", "prtd", "kof", "kr", "kry", "krtd"]
 PROFILE_KEYS = ["ed", "ld", "d3", "stuff", "ly", "opp", "rexp", "pexp", "nx", "ydb", "psr", "rsr", "hav"]
 STAT_ROUND = {"epa": 2, "repa": 2, "pepa": 2, "edepa": 2, "nxepa": 2, "ly": 1}
+
+
+ST_RET = re.compile(r"return(?:s|ed)? (?:for )?(-?\d+) (?:yards|yds|yd)\b", re.I)
+ST_LOSS = re.compile(r"return(?:s|ed)? (?:for )?(?:a )?loss of (\d+) (?:yards|yds|yd)\b", re.I)
+ST_NOGAIN = re.compile(r"return(?:s|ed)? for no gain", re.I)
+ST_TDRET = re.compile(r"(\d+) yd (?:punt|kickoff) return", re.I)
+ST_PUNT = re.compile(r"punt(?:s|ed)? (?:for )?(-?\d+) (?:yards|yds|yd)\b", re.I)
+ST_FG = re.compile(r"(\d+)[ -]?(?:yd|yard)s?\b", re.I)
+
+
+def st_return(text):
+    """Yards on a kick or punt return, read from the play's text. None when the kick was not returned."""
+    t = text or ""
+    for rx, sign in ((ST_LOSS, -1.0), (ST_RET, 1.0), (ST_TDRET, 1.0)):
+        m = rx.search(t)
+        if m:
+            return sign * float(m.group(1))
+    return 0.0 if ST_NOGAIN.search(t) else None
+
+
+def special_teams(p, keys):
+    """Field goals, punts and kickoffs for each team in each game, from the play-by-play. The yardage comes from the
+    play's text, because the yardage columns are empty for most games in the current data feed."""
+    pt = p.play_type.fillna("")
+    text = p.play_text.fillna("")
+    low = text.str.lower()
+    rows = []
+    # field goals: distance, made or not, and the chance an average kicker makes that kick
+    # returns of blocked kicks for a touchdown are left out: the feed is not consistent about which team has the ball on them
+    fg = pt.isin(["Field Goal Good", "Field Goal Missed", "Blocked Field Goal"])
+    f = p.loc[fg, keys].copy()
+    dist = text[fg].map(lambda t: (lambda m: float(m.group(1)) if m else np.nan)(ST_FG.search(t)))
+    dist = dist.where(dist <= 70)
+    made = (pt[fg] == "Field Goal Good").astype(float)
+    prob = p.loc[fg, "fg_make_prob"].astype(float).fillna(0.75).clip(0, 1)
+    f["fga"] = 1.0; f["fgm"] = made; f["fgxp"] = 3 * prob; f["fgoe"] = 3 * made - 3 * prob
+    f["fga40"] = (dist >= 40).astype(float); f["fgm40"] = ((dist >= 40) & (made == 1)).astype(float)
+    f["fgblk"] = pt[fg].str.startswith("Blocked").astype(float)
+    rows.append(f)
+    # punts: gross yards, the return, touchbacks and blocks. Net is gross minus the return, minus 20 for a touchback.
+    pm = pt.isin(["Punt", "Punt Return", "Punt Return Touchdown"])
+    u = p.loc[pm, keys].copy()
+    blocked = (p.loc[pm, "punt_blocked"].fillna(0) == 1) | low[pm].str.contains("block")
+    gross = text[pm].map(lambda t: (lambda m: float(m.group(1)) if m else np.nan)(ST_PUNT.search(t))).where(~blocked, 0.0)
+    ret = text[pm].map(st_return).astype(float).where(~blocked)
+    counted = gross.notna()
+    tb = low[pm].str.contains("touchback") & ret.isna() & ~blocked
+    u["pn"] = counted.astype(float); u["pyd"] = gross.fillna(0.0)
+    u["pret"] = ret.notna().astype(float); u["pry"] = ret.fillna(0.0); u["ptb"] = tb.astype(float)
+    u["pnet"] = np.where(counted, gross.fillna(0.0) - ret.fillna(0.0) - 20.0 * tb, 0.0)
+    u["pblk"] = blocked.astype(float); u["prtd"] = (pt[pm] == "Punt Return Touchdown").astype(float)
+    rows.append(u)
+    # kickoffs: the receiving team has the ball, so their returns are theirs. Onside kicks are left out of returns.
+    km = pt.isin(["Kickoff", "Kickoff Return Touchdown", "Kickoff Return (Offense)"])
+    k = p.loc[km, keys].copy()
+    onside = p.loc[km, "kickoff_onside"].fillna(0) == 1
+    kret = text[km].map(st_return).astype(float).where(~onside)
+    k["kof"] = 1.0; k["kr"] = kret.notna().astype(float); k["kry"] = kret.fillna(0.0)
+    k["krtd"] = (pt[km] == "Kickoff Return Touchdown").astype(float)
+    rows.append(k)
+    st = pd.concat(rows, ignore_index=True).fillna(0.0)
+    return st.groupby(keys)[ST_KEYS].sum().reset_index()
 
 
 def line_yards(y):
@@ -487,7 +553,8 @@ def team_stats(sched, through, pool, teams):
     Returns {team: {"g": games, "o": [...], "d": [...], "po": [...], "pd": [...]}} in the order of RAW_KEYS and PROFILE_KEYS."""
     cols = ["game_id", "week", "pos_team", "def_pos_team", "home_team", "period", "pos_score_diff_start", "rush", "pass",
             "penalty_no_play", "EPA", "success", "yards_gained", "sack", "int", "fumble_vec", "pass_breakup_player_name",
-            "drive_id", "drive_result", "down", "distance", "yards_to_goal", "play_type", "completion", "rush_td", "pass_td"]
+            "drive_id", "drive_result", "down", "distance", "yards_to_goal", "play_type", "completion", "rush_td", "pass_td",
+            "play_text", "fg_make_prob", "punt_blocked", "kickoff_onside"]
     p = pd.read_parquet(os.path.join(RAW, "pbp.parquet"), columns=cols)
     done = sched[sched.completed & sched.home_points.notna() & (sched.week <= through)]
     p = p[p.game_id.isin(done.game_id)].copy()
@@ -536,6 +603,7 @@ def team_stats(sched, through, pool, teams):
     dr["rzs"] = ((dr.ytg <= 20) & dr.res.isin(["TD", "FG"])).astype(float); dr["pu"] = (dr.res == "PUNT").astype(float)
     dg = dr.groupby(keys)[["dr", "dpts", "rz", "rztd", "rzs", "pu"]].sum().reset_index()
     per_game = per_game.merge(fl, on=keys, how="left").merge(dg, on=keys, how="left").fillna(0.0)
+    per_game = per_game.merge(special_teams(p, keys), on=keys, how="left").fillna(0.0)
     # points come from the final score, so defensive and special-teams scores count, as they do on a scoreboard
     pts = {}
     for g in done.itertuples():
@@ -585,7 +653,9 @@ def team_stats(sched, through, pool, teams):
     out = {}
     nd = {"pts": 0, "plays": 0, "ra": 0, "rtd": 0, "rexp": 0, "stuff": 0, "opp4": 0, "db": 0, "pa": 0, "cmp": 0, "ptd": 0, "int": 0, "sk": 0,
           "pexp": 0, "fl": 0, "t3": 0, "c3": 0, "t4": 0, "c4": 0, "ed": 0, "ld": 0, "nx": 0, "hav": 0, "rz": 0, "rztd": 0, "rzs": 0,
-          "dr": 0, "pu": 0, "nr": 0, "nrr": 0, "succ": 0, "rsucc": 0, "psucc": 0, "ldsucc": 0, "ry": 0, "py": 0, "yds": 0, "sky": 0, "d3": 0, "dpts": 0}
+          "dr": 0, "pu": 0, "nr": 0, "nrr": 0, "succ": 0, "rsucc": 0, "psucc": 0, "ldsucc": 0, "ry": 0, "py": 0, "yds": 0, "sky": 0, "d3": 0, "dpts": 0,
+          "fga": 0, "fgm": 0, "fga40": 0, "fgm40": 0, "fgblk": 0, "pn": 0, "pyd": 0, "pnet": 0, "pret": 0, "pry": 0, "ptb": 0, "pblk": 0, "prtd": 0,
+          "kof": 0, "kr": 0, "kry": 0, "krtd": 0}
     rnd = lambda k_, v: int(round(v)) if k_ in nd else round(float(v), STAT_ROUND.get(k_, 2))
     pr = {"ed": 3, "ld": 4, "d3": 2, "stuff": 4, "ly": 3, "opp": 4, "rexp": 4, "pexp": 4, "nx": 3, "ydb": 2, "psr": 4, "rsr": 4, "hav": 4}
     for t in teams:

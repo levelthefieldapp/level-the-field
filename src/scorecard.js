@@ -7,6 +7,23 @@
    is part of the LTF Index. They are yardsticks. */
 const PICKS = D.picks || [];
 const onFile = p => !!(p && p.lm != null && (p.f || 1) >= (M.formula || 1));      // a number on file under today's formula
+/* When each number went on file. The date comes from the ledger. On the hosted site, the ledger's history on GitHub is the
+   public record: GitHub dates every change itself, so anyone can check that nothing moved after kickoff. */
+const PICK_BY = Object.fromEntries(PICKS.map(p => [p.id, p]));
+const fileDay = iso => { if (!iso) return ''; const d = new Date(String(iso).length === 10 ? iso + 'T12:00:00Z' : iso); return isNaN(d) ? '' : d.toLocaleDateString('en-US', {timeZone:'America/New_York', month:'short', day:'numeric'}); };
+const recordUrl = () => SITE && SITE.repo ? `https://github.com/${SITE.repo}/commits/${SITE.branch || 'main'}/ledger.json` : '';
+const recordLink = (label = 'See the public record') => recordUrl() ? ` <a class="txt" href="${recordUrl()}" rel="noopener">${label}</a>` : '';
+function fileNote(g){      // a sentence for a game page
+  if (!byName[g.a] || !byName[g.h]) return '';
+  const p = PICK_BY[g.id];
+  if (p && onFile(p)){
+    const first = p.was && p.was.length ? p.was[0].at : null;
+    return `This LTF number went on file ${fileDay(p.at)}, before kickoff${first && first !== p.at ? `. It was first filed ${fileDay(first)} and refiled under today's formula, also before kickoff` : ''}. Nothing on file changes once a game starts.${recordLink()}`;
+  }
+  if (!g.done) return `The LTF number for this game goes on file once week ${g.w - 1} is in the books, always before kickoff.`;
+  return `No number was on file for this game under today's formula, so it is graded on the LTF line rebuilt from only the games played before it.`;
+}
+const fileShort = g => { const p = PICK_BY[g.id]; return p && onFile(p) ? `On file ${fileDay(p.at)}` : ''; };
 const SC_SYS = [['ltf','LTF'],['sp','SP+'],['fp','FPI'],['mkt','Betting line']];
 const SC_OUT = SC_SYS.filter(q => q[0] !== 'ltf').map(q => q[0]);
 let _sc = null;

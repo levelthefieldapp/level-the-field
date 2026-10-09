@@ -24,7 +24,7 @@ function viewPicks(){
       <td><b class="pkt">${x.pr.pts === 0 ? "Pick 'em" : `${esc(c.pick.ab)} by ${x.pr.pts}`}</b></td>
       <td>${confCell(c)}</td>
       <td class="wide">${ps ? `${esc(byName[g.a].ab)} ${ps.ap}, ${esc(byName[g.h].ab)} ${ps.hp}` : '–'}</td></tr>
-      <tr class="pkw"><td class="wide"></td><td colspan="4">${whyList(c, 4)}<a class="more inl" href="${gameL(g)}">Full breakdown</a></td></tr>`; }).join('');
+      <tr class="pkw"><td class="wide"></td><td colspan="4">${whyList(c, 4)}<a class="more inl" href="${gameL(g)}">Full breakdown</a>${fileShort(g) ? `<span class="filed">${fileShort(g)}</span>` : ''}</td></tr>`; }).join('');
   const b = BT, su = suRecord();
   const sure = [...games].sort((p, q2) => q2.c.p - p.c.p)[0], tight = [...games].sort((p, q2) => p.c.p - q2.c.p)[0];
   const lead = `Most confident pick${now ? '' : ` of week ${wk}`}: <a class="tlink" href="${gameL(sure.g)}">${esc(sure.c.pick.n)} over ${esc(sure.c.other.n)}</a>, ${sure.c.score} of 100.`

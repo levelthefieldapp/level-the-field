@@ -181,13 +181,16 @@ const rankRow = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}${t.move ? `
 const cardGroup = g => !g || g === 'all' ? 'all' : GROUPS[g] || confBySlug[g] ? g : null;
 const cardIn = g => g === 'all' ? () => true : g === 'p4' ? t => t.tier === 'P4' : g === 'g6' ? t => t.tier === 'G6' : t => t.c === confBySlug[g].name;
 const cardGroupName = g => g === 'all' ? '' : GROUPS[g] || confBySlug[g].label;
-async function cardTop(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one, for every team or one group
-  const n = q.n, g = q.g, tall = H > W, P = 56, foot = tall ? 104 : 84, br = byRank().filter(cardIn(g)).slice(0, n);
-  const row = g === 'all' ? rankRow : (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${t.c}${t.rank !== i + 1 ? `, No. ${t.rank} nationally` : ''}`, val:t.idx.toFixed(1)});
-  let y = cHead(c, W, P, g === 'all' ? `LTF Top ${n}` : `${cardGroupName(g)} Top ${n}`, tall ? (g === 'all' ? `Every FBS team on one scale. After week ${M.through}, ${M.season}.` : `${cardGroupName(g)} teams only, on the same scale as everyone. After week ${M.through}, ${M.season}.`) : null);
+async function cardTop(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one, for every team or one group. q.by 'res' ranks by résumé.
+  const n = q.n, g = q.g, tall = H > W, P = 56, foot = tall ? 104 : 84, res = q.by === 'res', br = (res ? byResume() : byRank()).filter(cardIn(g)).slice(0, n);
+  const wins = t => `${t.d.qw.length === 0 ? 'no' : t.d.qw.length} top-50 ${t.d.qw.length === 1 ? 'win' : 'wins'}`;
+  const row = res ? (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${wins(t)}, LTF No. ${t.rank}`})
+    : g === 'all' ? rankRow : (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${t.c}${t.rank !== i + 1 ? `, No. ${t.rank} nationally` : ''}`, val:t.idx.toFixed(1)});
+  const head = res ? (g === 'all' ? `Résumé Top ${n}` : `${cardGroupName(g)} résumé Top ${n}`) : g === 'all' ? `LTF Top ${n}` : `${cardGroupName(g)} Top ${n}`;
+  let y = cHead(c, W, P, head, tall ? (res ? `Who has earned the most so far: strength of record, quality wins and scoring margin. After week ${M.through}, ${M.season}.` : g === 'all' ? `Every FBS team on one scale. After week ${M.through}, ${M.season}.` : `${cardGroupName(g)} teams only, on the same scale as everyone. After week ${M.through}, ${M.season}.`) : null);
   const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/half), rows = br.map(row);
   await cRows(c, rows.slice(0, half), P, y, cw, rowH); await cRows(c, rows.slice(half), P + cw + gap, y, cw, rowH);
-  cFoot(c, W, H, foot, weekNote());
+  cFoot(c, W, H, foot, res ? `Résumé part of the LTF Index, after week ${M.through}` : weekNote());
 }
 async function cardConference(c, W, H, conf){   // one conference, every team in order
   const tall = H > W, P = 56, foot = tall ? 104 : 84, ts = tall ? conf.sorted : conf.sorted.slice(0, 10);
@@ -456,11 +459,11 @@ const statTitle = q => q.view === 'rate' ? q.name : q.view === 'pp' ? `${q.name}
 const statWho = q => `${q.d.side === 'team' ? '' : q.side === 'd' ? 'Defense, ' : 'Offense, '}${q.g === 'all' ? 'every FBS team' : `${cardGroupName(q.g)} teams`}`;
 async function cardStat(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one
   const tall = H > W, P = 56, foot = tall ? 104 : 84, n = q.rows.length, lower = statDir(q.d, q.side) < 0;
-  let y = cHead(c, W, P, statTitle(q), tall ? `${statWho(q)}. Every game counts, through week ${M.through}, ${M.season}.${lower ? ' Lower is better.' : ''}` : null);
+  let y = cHead(c, W, P, statTitle(q), tall ? `${up1(statWho(q))}. Every game counts, through week ${M.through}, ${M.season}.${lower ? ' Lower is better.' : ''}` : null);
   const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, per = tall ? 13 : 5, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/Math.max(half, per));
   const rows = q.rows.map(r => ({t:r.t, rank:r.r, name:r.t.n, note:`${r.t.w}-${r.t.l}, LTF No. ${r.t.rank}`, val:sfmt(r.v, q.f)}));
   await cRows(c, rows.slice(0, half), P, y, cw, rowH); await cRows(c, rows.slice(half), P + cw + gap, y, cw, rowH);
-  cFoot(c, W, H, foot, tall ? 'Not part of the LTF Index' : `${statWho(q)}. Through week ${M.through}.${lower ? ' Lower is better.' : ''}`);
+  cFoot(c, W, H, foot, tall ? 'Not part of the LTF Index' : `${up1(statWho(q))}. Through week ${M.through}.${lower ? ' Lower is better.' : ''}`);
 }
 
 /* ---------- a team's profile: the offense and defense charts ---------- */
@@ -526,6 +529,8 @@ const CARDS = {
   conferences:{shape:'wide', get: () => true, draw: cardConferences, name: () => 'Conference power rankings'},
   receipts:   {shape:'wide', get: id => receipts(id), draw: cardReceipts, name: r => `LTF picks, week ${r.week}`},
   buysell:    {shape:'wide', get: () => buySellCard(), draw: cardBuySell, name: () => 'Buying and selling'},
+  resume:     {shape:'tall', get: id => { const g = cardGroup(id); return g ? {n:25, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Résumé Top 25' : `${cardGroupName(q.g)} résumé Top 25`},
+  resume10:   {shape:'wide', get: id => { const g = cardGroup(id); return g ? {n:10, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Résumé Top 10' : `${cardGroupName(q.g)} résumé Top 10`},
   stat:       {shape:'tall', get: id => statCardData(id, 25), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}`},
   stat10:     {shape:'wide', get: id => statCardData(id, 10), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}, top 10`},
   radars:     {shape:'wide', get: id => HAS_PROFILE && bySlug[id] && bySlug[id].s && bySlug[id].s.po ? bySlug[id] : null, draw: cardRadars, name: t => `${t.n}, how they play`},

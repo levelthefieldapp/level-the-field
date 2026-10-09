@@ -17,16 +17,45 @@ const STAT_GROUPS = [...new Set(STATDEFS.map(d => d.grp))];
 const statSide = (d, side) => d.side === 'team' ? 'o' : side === 'o' || side === 'd' ? side : (d.ds || 'o');
 const statName = (d, side) => d.side === 'team' ? d.on : side === 'd' ? d.dn : d.on;
 const SVIEW = {tot:'Total', pg:'Per game', pp:'Per play'};
-const statViews = d => d.k === 'rate' ? [] : d.per ? ['tot', 'pg', 'pp'] : ['tot', 'pg'];
+const statViews = d => d.k === 'rate' || d.k === 'score' ? [] : d.per ? ['tot', 'pg', 'pp'] : ['tot', 'pg'];
 const statView = (d, want) => { const vs = statViews(d); return !vs.length ? 'rate' : vs.includes(want) ? want : 'pg'; };
 const viewLabel = (d, view) => view === 'pp' ? d.pn : view === 'pg' ? 'per game' : view === 'tot' ? 'total' : '';
 function statVal(t, d, side, view){
   const g = t.s ? t.s.g : 0; if (!g) return null;
-  if (d.k === 'rate'){ const den = sexpr(t, d.den, side); return den ? sexpr(t, d.num, side) / den * (d.x || 1) : null; }
+  if (d.k === 'score') return stScores().get(t);
+  if (d.k === 'rate'){ const den = sexpr(t, d.den, side); return den && den >= (d.min || 0) ? sexpr(t, d.num, side) / den * (d.x || 1) : null; }
   const n = sexpr(t, d.num, side);
   if (view === 'tot') return n;
   if (view === 'pp'){ const den = sexpr(t, d.per, side); return den ? n / den * (d.px || 1) : null; }
   return n / g;
+}
+/* special teams overall: the average percentile on six measures, 100 the best. Shown for the story, never part of the LTF Index. */
+const ST_PARTS = ['fgoe', 'netpunt', 'puntret', 'puntcov', 'kickret', 'kickcov'];
+let _st = null;
+function stScores(){
+  if (_st) return _st;
+  const got = new Map(T.map(t => [t, []]));
+  for (const id of ST_PARTS){ const d = STATBY[id]; if (!d) continue; const view = statView(d, 'pg'), dir = statDir(d, 'o') || 1;
+    const vals = T.map(t => [t, statVal(t, d, 'o', view)]).filter(x => x[1] != null && isFinite(x[1])).sort((a, b) => dir*(a[1] - b[1]));
+    vals.forEach(([t], i) => got.get(t).push(100 * i / Math.max(1, vals.length - 1))); }
+  return _st = new Map([...got].map(([t, ps]) => [t, ps.length >= 4 ? ps.reduce((a, b) => a + b, 0) / ps.length : null]));
+}
+function stRank(t){      // rank and the six pieces, for a team page
+  const all = T.map(x => [x, stScores().get(x)]).filter(x => x[1] != null).sort((a, b) => b[1] - a[1] || a[0].rank - b[0].rank);
+  const i = all.findIndex(x => x[0] === t);
+  return i < 0 ? null : {rank: i + 1, of: all.length, score: all[i][1]};
+}
+function stPane(t){
+  if (!HAS_STATS || !STATBY.stoverall) return '';
+  const r = stRank(t), pool = T;
+  const row = id => { const d = STATBY[id], view = statView(d, ['fgoe', 'rettd', 'blocks'].includes(id) ? 'tot' : 'pg'), rows = statRows(d, 'o', view, pool), me = rows.find(x => x.t === t);
+    return `<tr><td><a class="txt" href="${statL(d, 'o', view)}">${esc(d.on)}</a>${view === 'pg' ? ' <small>per game</small>' : view === 'tot' ? ' <small>this season</small>' : ''}</td><td class="num"><b>${me ? sfmt(me.v, statFmtKey(d, view)) : '–'}</b></td><td class="num">${me ? ord(me.r) : '–'}</td></tr>`; };
+  const fg = `${raw(t, 'o', 'fgm')} of ${raw(t, 'o', 'fga')} field goals`;
+  return `<section class="tsec"><h2 class="th2">Special teams</h2>
+    <p class="tpara">${r ? `${ord(r.rank)} of ${r.of} on special teams overall, with ${fg}.` : `Not enough kicks yet for an overall rank. ${fg}.`} Special teams are shown for the story and are not part of the LTF Index.</p>
+    <div class="scroll"><table class="log stt"><thead><tr><th>Measure</th><th class="num">Value</th><th class="num">Rank</th></tr></thead><tbody>
+    ${['fgoe', 'fgpct', 'netpunt', 'puntret', 'puntcov', 'kickret', 'kickcov', 'rettd', 'blocks'].map(row).join('')}</tbody></table></div>
+    <p class="tlinks"><a class="txt" href="${L('leaders', null, {cat: 'Special teams'})}">Special teams leaders</a></p></section>`;
 }
 const statDir = (d, side) => d.better === 0 ? 0 : (d.side === 'team' || side === 'o') ? d.better : -d.better;     // 1: higher is better, -1: lower is better
 const statFmtKey = (d, view) => d.k === 'rate' || view === 'tot' ? d.fmt : view === 'pp' ? (d.pfmt || '3') : d.fmt === 'int' ? '1' : d.fmt === 's0' ? 's1' : d.fmt;

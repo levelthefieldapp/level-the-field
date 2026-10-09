@@ -820,7 +820,7 @@ body:not(.about-open) .key{display:none}
 .lall{display:inline-flex;align-items:center;min-height:44px;font-weight:700;font-size:.92rem;text-decoration:underline;text-underline-offset:3px}
 .grid.stat td.sv b{font-size:1.1rem;font-weight:850;font-stretch:80%}
 .sflag{display:inline-block;font-size:.76rem;font-weight:700;padding:2px 7px;white-space:nowrap}
-.sflag.soft{background:var(--bad-bg);color:var(--bad)} .sflag.tough{background:var(--good-bg);color:var(--good)}
+.sflag.soft{background:var(--bad-bg);color:var(--bad)} .sflag.tough{background:var(--good-bg);color:var(--good)} .sflag.even{background:var(--alt);color:var(--ink);border:1px solid var(--line)}
 /* ---------- profiles ---------- */
 .pfigs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 40px}
 .pfig{min-width:0}
@@ -850,3 +850,10 @@ body:not(.about-open) .key{display:none}
 .plot .ax{stroke:var(--muted);stroke-width:1}
 .plot .dot.faint{opacity:.22}
 @media (max-width:900px){ .pfigs{grid-template-columns:minmax(0,1fr)} }
+/* filing dates and matchup notes, October 9 */
+p.filed{color:var(--muted);font-size:.92rem;margin:12px 0 0;max-width:70ch}
+.pkw .filed{display:inline-block;margin-left:14px;font-size:.85rem;color:var(--muted)}
+.mnotes{margin:0;padding-left:18px;display:grid;gap:10px}
+.mnotes li{line-height:1.45}
+.mnotes b.good{color:var(--good)} .mnotes b.bad{color:var(--bad)}
+.stt td:first-child{white-space:normal} .stt td:first-child small{display:block;margin-top:2px}

@@ -27,6 +27,7 @@ const GLOSS = {
   sdn:["Success rate, standard downs", "How often a play works when the offense is on schedule: first down, second and 7 or less, or third and 4 or less."],
   pdn:["Success rate, passing downs", "How often a play works when the offense is behind schedule and the defense expects a pass: second and 8 or more, or third and 5 or more."],
   sor:["Strength of record", "How hard this record would be to match. A 90 means a typical top-25 team would do worse than this nine times out of ten against the same schedule."],
+  sos:["Schedule so far", "How hard the schedule has been so far, out of every FBS team. 1 is the hardest. Strength of record already allows for it."],
   line:["LTF line", "How many points better LTF thinks one team is in this game, with 2.5 points added for the home team. “Alabama by 7” means LTF expects Alabama to win by 7. It comes from the LTF Index and nothing else."],
   market:["Betting line", "The sportsbooks' closing point spread for a finished game. It is never part of the LTF Index. It is shown on the Track record pages as a yardstick, because it is the hardest prediction to beat."],
   wc:["Win chance", "How often LTF expects the team to win this game, worked out from the LTF line."],
