@@ -234,7 +234,7 @@ def check_render(site, d):
     plain = [t["n"] for t in teams if re.fullmatch(r"[A-Za-z ]+", t["n"])]      # names whose page address is easy to predict
     slug = lambda s: s.lower().replace(" ", "-")
     routes = ["", "rankings", "weights", "games", "picks", "upsets", "buysell", "scorecard", "track", "vsline", "inputs", "playoff", "odds", "momentum", "recap",
-              "stats", "conferences", "leagues", "radar", "luck", "how"] + ["team/" + slug(n) for n in plain[:1] + plain[-1:]]
+              "stats", "leaders", "stat/sacks", "styles", "market", "conferences", "leagues", "radar", "luck", "how"] + ["team/" + slug(n) for n in plain[:1] + plain[-1:]]
     done = [g for g in games if g.get("hp") is not None]
     todo = [g for g in games if g.get("hp") is None and g["w"] == m.get("next")]
     routes += [f"game/{g['id']}" for g in (done[-1:] + todo[:1])]

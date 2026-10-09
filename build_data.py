@@ -460,6 +460,143 @@ def efficiency(pbp, fbs_games, teams, L=None):
     return score_stats(res)
 
 
+# ---- team stats for the Stats pages and team profiles ------------------------
+# Shown on the site, never part of the LTF Index or any pick. Two kinds:
+#   raw counts, like a box score: every play of every game, lower-division games included. The site turns them into
+#     totals, per-game numbers and rates. Sacks count against passing, not rushing.
+#   profile numbers: rates adjusted for opponent the same way the efficiency numbers are, garbage time left out,
+#     which the team profiles turn into percentiles.
+RAW_KEYS = ["pts", "plays", "yds", "epa", "succ",
+            "ra", "ry", "rtd", "rexp", "stuff", "opp4", "ly", "repa", "rsucc",
+            "db", "pa", "cmp", "py", "ptd", "int", "sk", "sky", "pexp", "pepa", "psucc",
+            "fl", "t3", "c3", "d3", "t4", "c4", "ed", "edepa", "ld", "ldsucc", "nx", "nxepa",
+            "hav", "rz", "rztd", "rzs", "dr", "dpts", "pu", "nr", "nrr"]
+PROFILE_KEYS = ["ed", "ld", "d3", "stuff", "ly", "opp", "rexp", "pexp", "nx", "ydb", "psr", "rsr", "hav"]
+STAT_ROUND = {"epa": 2, "repa": 2, "pepa": 2, "edepa": 2, "nxepa": 2, "ly": 1}
+
+
+def line_yards(y):
+    """Credit the offensive line gets for a run: losses count 120 percent, the first 4 yards in full, the next 6 at half,
+    nothing past 10."""
+    y = np.asarray(y, dtype=float)
+    return np.where(y < 0, 1.2 * y, np.minimum(y, 4) + 0.5 * np.clip(y - 4, 0, 6))
+
+
+def team_stats(sched, through, pool, teams):
+    """Raw counts for each FBS team's offense and the offense it faced, and the opponent-adjusted profile rates.
+    Returns {team: {"g": games, "o": [...], "d": [...], "po": [...], "pd": [...]}} in the order of RAW_KEYS and PROFILE_KEYS."""
+    cols = ["game_id", "week", "pos_team", "def_pos_team", "home_team", "period", "pos_score_diff_start", "rush", "pass",
+            "penalty_no_play", "EPA", "success", "yards_gained", "sack", "int", "fumble_vec", "pass_breakup_player_name",
+            "drive_id", "drive_result", "down", "distance", "yards_to_goal", "play_type", "completion", "rush_td", "pass_td"]
+    p = pd.read_parquet(os.path.join(RAW, "pbp.parquet"), columns=cols)
+    done = sched[sched.completed & sched.home_points.notna() & (sched.week <= through)]
+    p = p[p.game_id.isin(done.game_id)].copy()
+    keys = ["game_id", "pos_team", "def_pos_team"]
+    pt = p.play_type.fillna("")
+    scrim = (((p.rush == 1) | (p["pass"] == 1)) & (p.penalty_no_play != True) & ~pt.str.contains("Two Point")).values
+    s = p[scrim].copy()
+    y = s.yards_gained.fillna(0).astype(float)
+    rush, sk = (s.rush == 1), (s.sack == 1)
+    drop = (s["pass"] == 1)
+    att = drop & ~sk
+    epa = s.EPA.astype(float)
+    ok = epa.notna()
+    succ = s.success.fillna(0).astype(float)
+    dn, ds = s.down.fillna(0), s.distance.fillna(0)
+    expl = (rush & (y >= 10)) | (att & (y >= 20))
+    hav = (sk | (s.int == 1) | (s.fumble_vec == 1) | s.pass_breakup_player_name.notna() | (rush & (y < 0)))
+    lead = s.pos_score_diff_start.abs()
+    neutral = dn.isin([1, 2]) & (s.period <= 3) & (lead <= 14)
+    f = pd.DataFrame({k_: s[k_] for k_ in keys})
+    f["plays"] = 1.0; f["yds"] = y; f["epa"] = epa.where(ok, 0.0); f["succ"] = succ
+    f["ra"] = rush.astype(float); f["ry"] = y.where(rush, 0.0); f["rtd"] = (rush & (s.rush_td == 1)).astype(float)
+    f["rexp"] = (rush & (y >= 10)).astype(float); f["stuff"] = (rush & (y <= 0)).astype(float); f["opp4"] = (rush & (y >= 4)).astype(float)
+    f["ly"] = np.where(rush, line_yards(y), 0.0); f["repa"] = epa.where(rush & ok, 0.0); f["rsucc"] = succ.where(rush, 0.0)
+    f["db"] = drop.astype(float); f["pa"] = att.astype(float); f["cmp"] = (att & (s.completion == 1)).astype(float)
+    f["py"] = y.where(att, 0.0); f["ptd"] = (drop & (s.pass_td == 1)).astype(float); f["int"] = (s.int == 1).astype(float)
+    f["sk"] = sk.astype(float); f["sky"] = y.where(sk, 0.0); f["pexp"] = (att & (y >= 20)).astype(float)
+    f["pepa"] = epa.where(drop & ok, 0.0); f["psucc"] = succ.where(drop, 0.0)
+    f["t3"] = (dn == 3).astype(float); f["c3"] = ((dn == 3) & (y >= ds)).astype(float); f["d3"] = ds.where(dn == 3, 0.0)
+    f["t4"] = (dn == 4).astype(float); f["c4"] = ((dn == 4) & (y >= ds)).astype(float)
+    f["ed"] = dn.isin([1, 2]).astype(float); f["edepa"] = epa.where(dn.isin([1, 2]) & ok, 0.0)
+    f["ld"] = dn.isin([3, 4]).astype(float); f["ldsucc"] = succ.where(dn.isin([3, 4]), 0.0)
+    f["nx"] = (~expl & ok).astype(float); f["nxepa"] = epa.where(~expl & ok, 0.0)
+    f["hav"] = hav.astype(float); f["nr"] = neutral.astype(float); f["nrr"] = (neutral & rush).astype(float)
+    per_game = f.groupby(keys).sum(numeric_only=True).reset_index()
+    # fumbles lost, on any play
+    lost = pt.isin(["Fumble Recovery (Opponent)", "Fumble Recovery (Opponent) Touchdown", "Fumble Return Touchdown"])
+    fl = p[lost].groupby(keys).size().rename("fl").reset_index()
+    # drives: red zone trips, points from drives, punts
+    bad = ["END OF HALF", "END OF GAME", "END OF 4TH QUARTER", "Uncategorized", "KICKOFF", "PENALTY"]
+    dp = p[p.drive_id.notna() & ~p.drive_result.isin(bad)]
+    dr = dp.groupby(["game_id", "drive_id"]).agg(pos_team=("pos_team", "first"), def_pos_team=("def_pos_team", "first"),
+                                                 res=("drive_result", "first"), ytg=("yards_to_goal", "min")).reset_index()
+    dr["dr"] = 1.0; dr["dpts"] = dr.res.map({"TD": 7.0, "FG": 3.0}).fillna(0.0)
+    dr["rz"] = (dr.ytg <= 20).astype(float); dr["rztd"] = ((dr.ytg <= 20) & (dr.res == "TD")).astype(float)
+    dr["rzs"] = ((dr.ytg <= 20) & dr.res.isin(["TD", "FG"])).astype(float); dr["pu"] = (dr.res == "PUNT").astype(float)
+    dg = dr.groupby(keys)[["dr", "dpts", "rz", "rztd", "rzs", "pu"]].sum().reset_index()
+    per_game = per_game.merge(fl, on=keys, how="left").merge(dg, on=keys, how="left").fillna(0.0)
+    # points come from the final score, so defensive and special-teams scores count, as they do on a scoreboard
+    pts = {}
+    for g in done.itertuples():
+        pts[(g.game_id, g.home_team)] = float(g.home_points); pts[(g.game_id, g.away_team)] = float(g.away_points)
+    per_game["pts"] = [pts.get((gid, t), 0.0) for gid, t in zip(per_game.game_id, per_game.pos_team)]
+    off = per_game.groupby("pos_team")[RAW_KEYS].sum()
+    dfn = per_game.groupby("def_pos_team")[RAW_KEYS].sum()
+    games = pd.concat([done.home_team, done.away_team]).value_counts()
+
+    # the profile rates, adjusted for opponent like the efficiency numbers: lower-division opponents pooled, garbage time out
+    ps, pp = pool
+    pg = pp[pp.game_id.isin(done.game_id)].copy()
+    ptp = pg.play_type.fillna("")
+    q = pg[((pg.rush == 1) | (pg["pass"] == 1)) & (pg.penalty_no_play != True) & pg.EPA.notna() & ~ptp.str.contains("Two Point")].copy()
+    q = q[~(q.pos_score_diff_start.abs() > q.period.map(GARBAGE).fillna(21))]
+    qy = q.yards_gained.fillna(0).astype(float)
+    qr, qd, qsk = (q.rush == 1), (q["pass"] == 1), (q.sack == 1)
+    qdn, qds = q.down.fillna(0), q.distance.fillna(0)
+    qx = (qr & (qy >= 10)) | (qd & ~qsk & (qy >= 20))
+    qh = (qsk | (q.int == 1) | (q.fumble_vec == 1) | q.pass_breakup_player_name.notna() | (qr & (qy < 0)))
+    parts = {      # name: (value on each play, which plays count)
+        "ed": (q.EPA, qdn.isin([1, 2])), "ld": (q.success.astype(float), qdn.isin([3, 4])), "d3": (qds, qdn == 3),
+        "stuff": ((qy <= 0).astype(float), qr), "ly": (pd.Series(line_yards(qy), index=q.index), qr), "opp": ((qy >= 4).astype(float), qr),
+        "rexp": ((qy >= 10).astype(float), qr), "pexp": ((~qsk & (qy >= 20)).astype(float), qd), "nx": (q.EPA, ~qx),
+        "ydb": (qy, qd), "psr": (q.success.astype(float), qd), "rsr": (q.success.astype(float), qr), "hav": (qh.astype(float), pd.Series(True, index=q.index)),
+    }
+    gk = ["game_id", "pos_team", "def_pos_team", "home_team"]
+    played = sorted((set(ps[ps.completed & (ps.week <= through)].home_team) | set(ps[ps.completed & (ps.week <= through)].away_team)) - {POOL}) + [POOL]
+    idx = {t: i for i, t in enumerate(played)}
+    T_ = len(played)
+    league, power = leagues_of(sched)
+    L = league_design(played, league, power)
+    neutral_site = dict(zip(ps.game_id, ps.neutral_site))
+    prof = pd.DataFrame(index=played)
+    for name, (val, mask) in parts.items():
+        d = pd.DataFrame({k_: q[k_] for k_ in gk})
+        d["v"], d["m"] = val.astype(float).where(mask, np.nan), mask.astype(float)
+        a = d.groupby(gk).agg(v=("v", "mean"), n=("m", "sum")).reset_index()
+        a = a[a.v.notna() & (a.n > 0) & a.pos_team.isin(idx) & a.def_pos_team.isin(idx)]
+        h = np.where(a.game_id.map(neutral_site).astype(bool), 0.0, np.where(a.pos_team == a.home_team, 1.0, -1.0))
+        X = np.zeros((len(a), 2 + 2 * T_)); X[:, 0] = 1.0; X[:, 1] = h
+        X[np.arange(len(a)), 2 + a.pos_team.map(idx).values] = 1.0
+        X[np.arange(len(a)), 2 + T_ + a.def_pos_team.map(idx).values] = -1.0
+        b = ridge_leagues(X, a.v.values.astype(float), a.n.values.astype(float), ALPHA_PLAY, 2, L)[0]
+        prof["o_" + name], prof["d_" + name] = b[0] + b[2:2 + T_], b[0] - b[2 + T_:]
+
+    out = {}
+    nd = {"pts": 0, "plays": 0, "ra": 0, "rtd": 0, "rexp": 0, "stuff": 0, "opp4": 0, "db": 0, "pa": 0, "cmp": 0, "ptd": 0, "int": 0, "sk": 0,
+          "pexp": 0, "fl": 0, "t3": 0, "c3": 0, "t4": 0, "c4": 0, "ed": 0, "ld": 0, "nx": 0, "hav": 0, "rz": 0, "rztd": 0, "rzs": 0,
+          "dr": 0, "pu": 0, "nr": 0, "nrr": 0, "succ": 0, "rsucc": 0, "psucc": 0, "ldsucc": 0, "ry": 0, "py": 0, "yds": 0, "sky": 0, "d3": 0, "dpts": 0}
+    rnd = lambda k_, v: int(round(v)) if k_ in nd else round(float(v), STAT_ROUND.get(k_, 2))
+    pr = {"ed": 3, "ld": 4, "d3": 2, "stuff": 4, "ly": 3, "opp": 4, "rexp": 4, "pexp": 4, "nx": 3, "ydb": 2, "psr": 4, "rsr": 4, "hav": 4}
+    for t in teams:
+        o = off.loc[t] if t in off.index else pd.Series(0.0, index=RAW_KEYS)
+        d = dfn.loc[t] if t in dfn.index else pd.Series(0.0, index=RAW_KEYS)
+        out[t] = {"g": int(games.get(t, 0)), "o": [rnd(k_, o[k_]) for k_ in RAW_KEYS], "d": [rnd(k_, d[k_]) for k_ in RAW_KEYS],
+                  "po": [round(float(prof.loc[t, "o_" + k_]), pr[k_]) for k_ in PROFILE_KEYS],
+                  "pd": [round(float(prof.loc[t, "d_" + k_]), pr[k_]) for k_ in PROFILE_KEYS]}
+    return out
+
+
 def score_stats(res):
     """The offense and defense grades, as standard scores among the teams in the table."""
     res = res.copy()
@@ -836,6 +973,7 @@ def build(prev_path=None):
             for nm, won in ((g.home_team, g.home_points > g.away_points), (g.away_team, g.away_points > g.home_points)):
                 c_ = close.setdefault(nm, [0, 0]); c_[0] += int(won); c_[1] += 1
 
+    tstats = team_stats(sched, through, pool, teams)      # for the Stats pages and team profiles, never scored
     out_teams = []
     for t in teams:
         c = conf[t]
@@ -868,7 +1006,7 @@ def build(prev_path=None):
                   "oexp": round(float(eff.o_exp[t]) * 100, 1), "dexp": round(float(eff.d_exp[t]) * 100, 1),
                   "oppd": round(float(eff.o_ppd[t]), 2), "dppd": round(float(eff.d_ppd[t]), 2),
                   "hav": round(float(eff.d_hav[t]) * 100, 1)},
-            "h": hist[t], "pv": prev_stats.get(t),
+            "h": hist[t], "pv": prev_stats.get(t), "s": tstats[t],
         })
 
     nxt = sched[(~sched.completed) & (sched.week > through)]      # a postponed game from an old week does not hold the calendar back
@@ -967,7 +1105,7 @@ def build(prev_path=None):
                  "ref": round(ref, 2), "k": round(k, 2), "games": int(len(done)), "fbsGames": int(len(P["fbs"])),
                  "lined": int(sum(1 for g in P["fbs"].game_id if lines.get(g, (None,))[0] is not None)),
                  "book": "DraftKings", "apWeek": ap_week, "wt": WEIGHTS, "formula": FORMULA, "leagues": leagues,
-                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "mom": MOMENTUM, "lgc": LEAGUE_CHECK, "bs": BUYSELL, "vs": VSLINE,
+                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "mom": MOMENTUM, "lgc": LEAGUE_CHECK, "bs": BUYSELL, "vs": VSLINE, "sk": RAW_KEYS, "pk": PROFILE_KEYS,
                  "lastWeek": int(sched.week.max()), "api": bool(api),
                  "pulled": (lambda d: f"{d.strftime('%b')} {d.day}")(pd.Timestamp(api["pulledAt"]).tz_convert("America/New_York")) if api else None},
         "teams": out_teams, "games": games, "picks": picks, "calls": calls,

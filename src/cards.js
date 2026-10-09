@@ -451,6 +451,63 @@ async function cardReceipts(c, W, H, r){
   cFoot(c, W, H, foot, `Every game between FBS teams, ${M.season}`);
 }
 
+/* ---------- stat leaders: one stat, ranked ---------- */
+const statTitle = q => q.view === 'rate' ? q.name : q.view === 'pp' ? `${q.name}, ${q.d.pn.toLowerCase()}` : q.view === 'tot' ? `${q.name}, season total` : `${q.name} per game`;
+const statWho = q => `${q.d.side === 'team' ? '' : q.side === 'd' ? 'Defense, ' : 'Offense, '}${q.g === 'all' ? 'every FBS team' : `${cardGroupName(q.g)} teams`}`;
+async function cardStat(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one
+  const tall = H > W, P = 56, foot = tall ? 104 : 84, n = q.rows.length, lower = statDir(q.d, q.side) < 0;
+  let y = cHead(c, W, P, statTitle(q), tall ? `${statWho(q)}. Every game counts, through week ${M.through}, ${M.season}.${lower ? ' Lower is better.' : ''}` : null);
+  const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, per = tall ? 13 : 5, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/Math.max(half, per));
+  const rows = q.rows.map(r => ({t:r.t, rank:r.r, name:r.t.n, note:`${r.t.w}-${r.t.l}, LTF No. ${r.t.rank}`, val:sfmt(r.v, q.f)}));
+  await cRows(c, rows.slice(0, half), P, y, cw, rowH); await cRows(c, rows.slice(half), P + cw + gap, y, cw, rowH);
+  cFoot(c, W, H, foot, tall ? 'Not part of the LTF Index' : `${statWho(q)}. Through week ${M.through}.${lower ? ' Lower is better.' : ''}`);
+}
+
+/* ---------- a team's profile: the offense and defense charts ---------- */
+function cRadar(c, cx, cy, R0, vals, col, o = {}){   // the sixteen spokes on a canvas, as on the team page
+  const n = PAXES.length, ang = i => -Math.PI/2 + 2*Math.PI*i/n, pt = (i, v) => [cx + Math.cos(ang(i))*R0*v/100, cy + Math.sin(ang(i))*R0*v/100];
+  for (const [g, fill] of [['run', 'rgba(23,87,63,.07)'], ['pass', 'rgba(242,88,10,.07)']]){
+    const idx = PAXES.map((a, i) => a.g === g ? i : -1).filter(i => i >= 0), a0 = ang(idx[0]) - Math.PI/n, a1 = ang(idx[idx.length - 1]) + Math.PI/n;
+    c.beginPath(); c.moveTo(cx, cy); c.arc(cx, cy, R0 + 6, a0, a1); c.closePath(); c.fillStyle = fill; c.fill(); }
+  for (const v of [25, 50, 75, 100]){ c.beginPath(); PAXES.forEach((_, i) => { const [x, y] = pt(i, v); i ? c.lineTo(x, y) : c.moveTo(x, y); }); c.closePath();
+    c.strokeStyle = v === 50 ? CK.muted : CK.line; c.lineWidth = v === 50 ? 1.5 : 1.2; c.setLineDash(v === 50 ? [4, 5] : []); c.stroke(); }
+  c.setLineDash([]); c.strokeStyle = CK.line; c.lineWidth = 1;
+  PAXES.forEach((_, i) => { const [x, y] = pt(i, 100); c.beginPath(); c.moveTo(cx, cy); c.lineTo(x, y); c.stroke(); });
+  const pts = PAXES.map((a, i) => pt(i, Math.max(3, vals[a.k] ? vals[a.k].p : 0)));
+  c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+  c.save(); c.globalAlpha = .28; c.fillStyle = col; c.fill(); c.restore(); c.strokeStyle = col; c.lineWidth = o.lw || 3.5; c.lineJoin = 'round'; c.stroke();
+  pts.forEach(([x, y]) => { c.beginPath(); c.arc(x, y, o.dot || 5, 0, Math.PI*2); c.fillStyle = col; c.fill(); });
+  PAXES.forEach((a, i) => { const [x, y] = pt(i, 100 + (o.gap || 14)*100/R0), cs = Math.cos(ang(i));
+    cText(c, a.s, x, y, {px:o.px || 17, wt:650, color: a.g === 'run' ? CK.good : a.g === 'pass' ? '#B5440A' : CK.ink, align: Math.abs(cs) < 0.2 ? 'center' : cs > 0 ? 'left' : 'right', base:'middle', max: o.lab || 150}); });
+}
+const radarInk = t => { const h = String(t.col || '').replace('#', ''); if (h.length !== 6) return CK.turf;      // the team's color, unless it is too pale to see on white
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)), lum = (0.299*r + 0.587*g + 0.114*b)/255;
+  return lum > 0.72 ? (String(t.fg || '').toUpperCase() !== '#FFFFFF' ? t.fg : CK.ink) : t.col; };
+async function cardRadars(c, W, H, t){
+  const tall = H > W, P = 56, foot = tall ? 104 : 84, im = await cardLogo(t), col = radarInk(t);
+  c.fillStyle = CK.paper; c.fillRect(0, 0, W, H);
+  c.fillStyle = t.col; c.fillRect(0, 0, W, tall ? 150 : 108);
+  cBadge(c, t, im, P, tall ? 30 : 20, tall ? 90 : 68, true);
+  const nx = P + (tall ? 118 : 92);
+  cText(c, `${t.n}: how they play`, nx, tall ? 72 : 52, {px: tall ? 52 : 40, wt:900, w:'condensed', color:t.fg, max:W - nx - P, base:'middle'});
+  cText(c, `${t.w}-${t.l}, LTF No. ${t.rank}. Percentiles among FBS teams, adjusted for opponent: 100 is the best, 50 the middle.`, nx, tall ? 116 : 86, {px: tall ? 24 : 19, wt:600, color: t.fg === '#FFFFFF' ? 'rgba(255,255,255,.85)' : 'rgba(16,32,26,.78)', max:W - nx - P, base:'middle'});
+  const pr = profilePct().get(t), top = tall ? 150 : 108, bottom = H - foot;
+  const panes = tall ? [[W/2, top + (bottom - top)*0.25 + 10], [W/2, top + (bottom - top)*0.75 - 4]] : [[W*0.25 + 6, (top + bottom)/2 + 14], [W*0.75 - 6, (top + bottom)/2 + 14]];
+  const R0 = tall ? Math.min(232, (bottom - top)/4 - 40) : Math.min(150, (bottom - top)/2 - 52);
+  [['o', 'Offense'], ['d', 'Defense']].forEach(([side, lab], i) => { const [cx, cy] = panes[i];
+    cRadar(c, cx, cy, R0, pr[side], col, {px: tall ? 21 : 16, gap: tall ? 16 : 12, lab: tall ? 200 : 132, dot: tall ? 6 : 4.4, lw: tall ? 4 : 3.5});
+    cText(c, lab, tall ? P : cx - W/4 + 30, tall ? cy - R0 - 18 : top + 30, {px: tall ? 44 : 28, wt:900, it:true, w:'condensed', color:CK.ink}); });
+  if (!tall){ c.fillStyle = CK.line; c.fillRect(W/2 - 1, top + 20, 2, bottom - top - 40); }
+  cFoot(c, W, H, foot, `Green: running. Orange: passing. Through week ${M.through}.`);
+}
+
+/* ---------- LTF and the market ---------- */
+async function cardMarket(c, W, H, d){
+  const row = (t, up) => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}, market No. ${d.mk.rank.get(t)}`, val:`+${Math.abs(d.mk.rank.get(t) - t.rank)}`, valColor: up ? CK.good : CK.bad});
+  await cTwo(c, W, H, 'LTF and the market', [{title:'LTF has them higher', color:CK.good, sub:'spots', rows:d.hi.map(t => row(t, true))}, {title:'The market has them higher', color:CK.bad, sub:'spots', rows:d.lo.map(t => row(t, false))}],
+    `LTF rank on the left. Market rank from this season's closing lines. ${weekNote()}`);
+}
+
 /* ---------- draw any card ---------- */
 const CARDS = {
   team:       {shape:'wide', get: id => bySlug[id], draw: cardTeam, name: t => t.n},
@@ -469,6 +526,11 @@ const CARDS = {
   conferences:{shape:'wide', get: () => true, draw: cardConferences, name: () => 'Conference power rankings'},
   receipts:   {shape:'wide', get: id => receipts(id), draw: cardReceipts, name: r => `LTF picks, week ${r.week}`},
   buysell:    {shape:'wide', get: () => buySellCard(), draw: cardBuySell, name: () => 'Buying and selling'},
+  stat:       {shape:'tall', get: id => statCardData(id, 25), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}`},
+  stat10:     {shape:'wide', get: id => statCardData(id, 10), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}, top 10`},
+  radars:     {shape:'wide', get: id => HAS_PROFILE && bySlug[id] && bySlug[id].s && bySlug[id].s.po ? bySlug[id] : null, draw: cardRadars, name: t => `${t.n}, how they play`},
+  radarsTall: {shape:'tall', get: id => HAS_PROFILE && bySlug[id] && bySlug[id].s && bySlug[id].s.po ? bySlug[id] : null, draw: cardRadars, name: t => `${t.n}, how they play`},
+  market:     {shape:'wide', get: () => marketCard(), draw: cardMarket, name: () => 'LTF and the market'},
 };
 async function drawCard(kind, id, shape){   // returns a canvas, or null if there is no such card
   const k = CARDS[kind], what = k && k.get(id); if (!what) return null;
@@ -540,11 +602,11 @@ function sheetClick(b){   // a button inside the panel
 /* During the daily update a browser opens the site with #!cards=team/alabama,game/123,... after the address. Instead of
    drawing a page, the site draws those cards and leaves them in the document for the update to collect. */
 const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', ''], 'list/buysell': ['buysell', ''],
-                    'list/radar': ['radar', ''], 'list/upsets': ['upsets', ''], 'list/movers': ['movers', ''], 'list/momentum': ['momentum', ''], 'list/luck': ['luck', '']};
+                    'list/radar': ['radar', ''], 'list/upsets': ['upsets', ''], 'list/movers': ['movers', ''], 'list/momentum': ['momentum', ''], 'list/luck': ['luck', ''], 'list/market': ['market', '']};
 async function exportCards(list){
   const out = {};
   for (const name of list){
-    const [dir, id] = name.split('/'), spec = CARD_FILES[name] || [dir, id], k = CARDS[spec[0]];
+    const [dir, id] = name.split('/'), spec = CARD_FILES[name] || (dir === 'stat' ? ['stat10', id] : [dir, id]), k = CARDS[spec[0]];
     if (!k) continue;
     if (k.shape !== 'wide' && spec[0] !== 'conference') continue;                       // link previews are wide. Tall cards are for sharing by hand.
     try { const cv = await drawCard(spec[0], spec[1], 'wide'); if (cv) out[name] = cv.toDataURL('image/png'); } catch(e){}

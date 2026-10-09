@@ -1,6 +1,7 @@
 /* ================= plain-language definitions ================= */
 /* Each entry: the name, then what it means in everyday words. These show when a reader points at a column heading or taps a dotted word. */
 const GLOSS = {
+  adjrank:["LTF rank", "Where LTF ranks the team on the same number once their opponents are taken into account, with garbage time left out. When it is far from the raw rank, the schedule is shaping the raw number."],
   index:["LTF Index", "One score for every team, from 0 to 100. An average team is 50, a good one is in the 60s, and the very best are near 80 or higher. It is built from this season's games and nothing else: results, play-by-play stats and scoring margin. No polls, no preseason rankings, no earlier seasons and no betting lines."],
   ltf:["LTF Index", "LTF is short for Level the Field. The LTF Index is the site's own formula: résumé 20%, offense 25%, defense 25%, scoring margin 20% and the first half 10%. Every part comes from this season's games."],
   rec:["Record", "Wins and losses. The smaller numbers next to it are the conference record."],

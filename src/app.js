@@ -8,7 +8,7 @@ const SECTIONS = [
   {k:'home', label:'This week', pages:[]},
   {k:'rankings', label:'Rankings', pages:[['rankings','LTF rankings'],['conferences','Conferences'],['momentum','Trends'],['weights','Build your own']]},
   {k:'games', label:'Games', pages:[['games','Games and picks'],['upsets','Upset watch'],['buysell','Buying and selling'],['recap','Recap']]},
-  {k:'teams', label:'Teams', pages:[['teams','All teams'],['compare','Compare'],['stats','Stats'],['blind','Blind résumé']]},
+  {k:'teams', label:'Teams', pages:[['teams','All teams'],['leaders','Stats'],['compare','Compare'],['blind','Blind résumé']]},
   {k:'playoff', label:'Playoff', pages:[['playoff','Playoff']]},
   {k:'scorecard', label:'Track record', pages:[['scorecard','Track record'],['how','How it works']]},
 ];
@@ -17,19 +17,20 @@ const HUBS = {
   momentum: [['momentum','Momentum'], ['luck','Luck'], ['radar','Under the radar']],
   games: [['games','Scores and schedule'], ['picks','Picks']],
   playoff: [['playoff','Bracket'], ['odds','Season odds']],
-  scorecard: [['scorecard','This season'], ['track','Past seasons'], ['vsline','Against the line']],
+  scorecard: [['scorecard','This season'], ['track','Past seasons'], ['vsline','Against the line'], ['market','LTF and the market']],
+  leaders: [['leaders','Stat leaders'], ['stats','Chart and table'], ['styles','How teams play']],
   how: [['how','How it works'], ['inputs','What goes in']],
 };
 const HUB_OF = Object.fromEntries(Object.entries(HUBS).flatMap(([h, tabs]) => tabs.map(([k]) => [k, h])));
-const PARENT = {team:'teams', game:'games', conference:'conferences'};      // a detail page lights up the page it sits under
+const PARENT = {team:'teams', game:'games', conference:'conferences', stat:'leaders'};      // a detail page lights up the page it sits under
 const SITE_PAGES = [['about','About'], ['contact','Contact']];
-const ALIASES = [['scorecard','Scorecard'], ['track','LTF track record'], ['weights','Your own weights'], ['radar','Polls vs LTF']];      // names people may still search for
+const ALIASES = [['scorecard','Scorecard'], ['track','LTF track record'], ['weights','Your own weights'], ['radar','Polls vs LTF'], ['leaders','Stat leaders'], ['styles','Run and pass styles'], ['market','Market rankings']];      // names people may still search for
 const ALLPAGES = [...SECTIONS.flatMap(s => s.pages), ...Object.values(HUBS).flat(), ...SITE_PAGES, ...ALIASES].filter((p, i, a) => a.findIndex(q => q[1] === p[1]) === i);      // for search: every page by every name it goes by
 const entryOf = page => HUB_OF[page] || page;
 const sectionOf = page => SECTIONS.find(s => s.k === page || s.pages.some(p => p[0] === entryOf(page))) || null;
 const hubTabs = page => { const h = HUB_OF[page]; if (!h) return '';
   const keep = R.q.group ? {group: R.q.group} : null;
-  return `<nav class="ptabs" aria-label="${esc(sectionOf(page) ? (sectionOf(page).pages.find(p => p[0] === h) || [h, ''])[1] : '')}">${HUBS[h].map(([k, l]) => `<a href="${L(k, null, k === 'momentum' || k === 'luck' ? keep : null)}"${k === page ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`; };
+  return `<nav class="ptabs" aria-label="${esc(sectionOf(page) ? (sectionOf(page).pages.find(p => p[0] === h) || [h, ''])[1] : '')}">${HUBS[h].map(([k, l]) => `<a href="${L(k, null, ['momentum', 'luck', 'leaders', 'styles'].includes(k) ? keep : null)}"${k === page ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`; };
 const ICON = {
   home: '<path d="M3 11l9-7 9 7v9.5H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
   rankings: '<path d="M4 20V11M10 20V4M16 20v-7M2 20.5h20" fill="none" stroke="currentColor" stroke-width="2.2"/>',
@@ -40,7 +41,7 @@ const ICON = {
 const icon = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 const VIEWS = {home:viewHome, rankings:viewRankings, teams:viewTeams, team:viewTeam, conferences:viewConferences, conference:viewConference,
                games:viewGames, game:viewGame, stats:viewStats, compare:viewCompare, playoff:viewPlayoff, radar:viewRadar, upsets:viewUpsets, buysell:viewBuySell, vsline:viewVsLine, leagues:viewLeagues, inputs:viewInputs,
-               track:viewTrack, weights:viewWeights, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
+               track:viewTrack, weights:viewWeights, leaders:viewLeaders, stat:viewStat, styles:viewStyles, market:viewMarket, how:viewHow, about:viewAbout, contact:viewContact, picks:viewPicks, recap:viewRecap, odds:viewOdds, blind:viewBlind, luck:viewLuck, momentum:viewMomentum, scorecard:viewScorecard};
 const MOVED = {spread:'picks', model:'scorecard', reputation:'radar'};      // pages retired on October 7, 2026. An old link lands on the nearest page that is still here.
 function ribbon(){
   const games = nextGames().filter(x => x.pr).sort((a,b) => Math.min(byName[a.g.h].rank, byName[a.g.a].rank) - Math.min(byName[b.g.h].rank, byName[b.g.a].rank)).slice(0,16);
@@ -78,7 +79,7 @@ function shell(){
     <p class="fine">Built from this season's games and nothing else: no polls, no preseason rankings, no betting lines. For fun and for arguments. Nothing here is betting advice. This site is independent and is not connected to any school, conference or sportsbook. Team names, colors and logos belong to the schools. Data from the public cfbfastR data sets and the CollegeFootballData.com API.</p>`;
 }
 function controls(show, v){
-  $('controls').hidden = !show; $('ctlx').innerHTML = show && v && v.ctl ? v.ctl : ''; if (!show){ document.body.classList.remove('has-filters'); return; }
+  $('controls').hidden = !show; $('ctlx').innerHTML = show && v && v.ctl ? v.ctl : ''; $('find').closest('label').hidden = !!(v && v.nofind); if (!show){ document.body.classList.remove('has-filters'); return; }
   const k = groupKey();
   $('groupseg').innerHTML = ['all','p4','g6'].map(g => `<a data-keep href="${Lq({group: g==='all' ? null : g})}" aria-current="${k===g}">${GROUPS[g]}</a>`).join('');
   $('conf').value = GROUPS[k] ? '' : k;

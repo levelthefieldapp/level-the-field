@@ -24,8 +24,8 @@ from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "src")
-JS = ["core.js", "brand.js", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
-      "momentum.js", "scorecard.js", "cards.js", "app.js"]
+JS = ["core.js", "brand.js", "statdefs.json", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
+      "momentum.js", "scorecard.js", "stats2.js", "profile.js", "cards.js", "app.js"]
 NAME = "Level the Field"
 SHARE = ("Every college football team on one scale, built from this season's games and nothing else. "
          "No polls, no preseason rankings, no betting lines. Rankings, picks and an upset watch, graded every week.")
@@ -47,19 +47,22 @@ PAGES = {
     "recap": ("Weekly recap", "How the LTF picks did last week: winners, the biggest upsets and the biggest misses."),
     "teams": ("All teams", "All FBS teams by conference. Every team has a page with their score, stats, results and remaining schedule."),
     "stats": ("Stats", "Every team on one chart, and every stat in one table, adjusted for opponent."),
+    "leaders": ("Stat leaders", "Box-score leaders for every FBS team, offense and defense: totals, per game and per play, nationally or by conference."),
+    "styles": ("How teams play", "Who runs and who throws in close games, set against what LTF says they do well, on offense and defense."),
     "compare": ("Compare two teams", "Any two teams side by side, with the LTF line between them."),
     "blind": ("Blind résumé", "Two real teams with the names taken off. Pick the better one, then see who they are."),
     "playoff": ("Playoff picture", "The 12-team bracket if the season ended today and the committee went by the LTF Index."),
     "odds": ("Season odds", "Each team's chance to make the playoff, win their conference and reach a bowl, from 2,500 simulated seasons."),
     "scorecard": ("Scorecard", "LTF graded every week next to SP+, FPI and the betting line, on the same games."),
     "track": ("LTF track record", "Every finished game where LTF had a line before kickoff, graded on the winner and the margin."),
+    "market": ("LTF and the market", "Each team's LTF rank next to their rank in the betting market, worked out from this season's closing lines. A yardstick, never part of the LTF Index."),
     "vsline": ("Against the line", "Where LTF and the betting line disagreed on finished games, and who turned out right. A benchmark, graded every week."),
     "inputs": ("What goes in, and what stays out", "Everything the LTF Index is built from, and everything it leaves out on purpose: polls, preseason rankings, earlier seasons and betting lines."),
     "how": ("How it works", "What goes into the LTF Index, how picks are made, and what testing has shown."),
     "about": ("About", "What Level the Field is and who it is for."),
     "contact": ("Contact", "How to reach Level the Field."),
 }
-DETAIL = {"team", "game", "conference"}                      # pages that take a name or a number after them
+DETAIL = {"team", "game", "conference", "stat"}                      # pages that take a name or a number after them
 RETIRED = {"spread": "picks", "model": "scorecard", "reputation": "radar"}      # the same list as MOVED in src/app.js
 
 
@@ -75,7 +78,10 @@ def body_html():
 
 def rd(name):
     with open(os.path.join(SRC, name), encoding="utf-8") as f:
-        return f.read()
+        text = f.read()
+    if name == "statdefs.json":      # the stat catalog, shared with the Python side, goes into the page as a constant
+        return "const STATDEFS = " + json.dumps(json.loads(text), separators=(",", ":"), ensure_ascii=False) + ";"
+    return text
 
 
 def arg(flag, default=None):
@@ -323,6 +329,7 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
 
     st = standings(data)
     m = data["meta"]
+    statdefs = json.load(open(os.path.join(SRC, "statdefs.json"), encoding="utf-8")) if any(t.get("s", {}).get("g") for t in data["teams"]) else []
     lm = {q["id"]: q["lm"] for q in data.get("picks", []) if "lm" in q}
     top = sorted(st.values(), key=lambda r: r["rank"])
     lead = f"After week {m['through']}: " + ", ".join(f"{r['rank']}. {r['t']['n']}" for r in top[:5]) + "."
@@ -336,7 +343,8 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
     week = [g for g in data["games"] if g["h"] in st and g["a"] in st and g["w"] in (m.get("next"), m["through"])]
     confs = sorted({t["c"] for t in data["teams"] if t["c"] != "Independent"})
     wanted = ["list/top10"] + [f"team/{slug(n)}" for n in st] + [f"game/{g['id']}" for g in week] + [f"conference/{slug(c)}" for c in confs] + \
-             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell", "list/radar", "list/upsets", "list/movers", "list/momentum", "list/luck"]
+             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell", "list/radar", "list/upsets", "list/movers", "list/momentum", "list/luck", "list/market"] + \
+             [f"stat/{d['id']}" for d in statdefs]
     have = draw_cards(out, wanted) if cards else set()
     pic = lambda name, fallback="og.png": f"cards/{name}.png" if name in have else fallback
     if "list/top10" in have:      # the front page and the rankings share the top 10 as their preview
@@ -344,7 +352,7 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
 
     pages = [""]
     special = {"rankings": "list/top10", "conferences": "list/conferences", "leagues": "list/conferences", "radar": "list/radar" if "list/radar" in have else "list/polls", "recap": "list/receipts", "scorecard": "list/receipts", "buysell": "list/buysell",
-               "upsets": "list/upsets", "momentum": "list/momentum", "luck": "list/luck"}
+               "upsets": "list/upsets", "momentum": "list/momentum", "luck": "list/luck", "market": "list/market", "leaders": "stat/points"}
     for key, (title, desc) in PAGES.items():
         paras = [desc, lead] if key in ("rankings", "teams", "picks", "games", "weights") else [desc]
         page = shell("../", head_tags("../", title, desc, v, url, f"{key}/", pic(special.get(key, "-")), counter), static_view("../", title, paras, nav), v)
@@ -358,6 +366,12 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
         page = shell("../../", head_tags("../../", title, short, v, url, f"team/{s}/", pic(f"team/{s}"), counter), static_view("../../", name, paras, links), v)
         write(os.path.join(out, "team", s, "index.html"), page)
         pages.append(f"team/{s}/")
+    for d in statdefs:      # one page per stat, each with its own top 10 as the preview
+        title = d["on"] if d.get("side") == "team" else f"{d['on']} and {d['dn'][0].lower() + d['dn'][1:]}"
+        desc = f"{d['on']}: every FBS team ranked{'' if d.get('side') == 'team' else ', offense and defense'}, through week {m['through']}. {d['def']}"
+        page = shell("../../", head_tags("../../", title, desc, v, url, f"stat/{d['id']}/", pic(f"stat/{d['id']}"), counter), static_view("../../", title, [desc], [("Stat leaders", "leaders/")] + nav), v)
+        write(os.path.join(out, "stat", d["id"], "index.html"), page)
+        pages.append(f"stat/{d['id']}/")
     for c in sorted({t["c"] for t in data["teams"]}):
         s = slug(c)
         label = "Independents" if c == "Independent" else c

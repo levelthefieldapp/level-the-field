@@ -55,19 +55,9 @@ const fact = (label, value, note) => `<div class="fact"><span>${label}</span><b>
 
 /* ================= home ================= */
 function viewHome(){
-  const br = byRank(), a = br[0], b = br[1], gap = a.idx - b.idx;
+  const br = byRank();
   const lastGame = t => { const g = t.g[t.g.length-1]; return g ? `a ${scoreTxt(g)} ${g.pf>g.pa?'win over':'loss to'} ${esc(g.opp)}` : ''; };
-  const head = a.prevRank && a.prevRank !== 1 ? `${esc(a.n)} takes over at No. 1` : gap >= 4 ? `${esc(a.n)} is No. 1, and it isn't close` : gap >= 1.5 ? `${esc(a.n)} stays on top` : `${esc(a.n)} leads ${esc(b.n)} by a hair`;
-  const firsts = COMP.filter(c => a.rk[c.k] === 1).map(c => c.name.toLowerCase());
-  const ne = a.sched.find(e => !e.game.done), npr = ne && gameLine(ne.game);
-  const nextUp = !ne ? 'The regular season is done.' : !npr ? `Next up: ${esc(ne.opp)}.` : `Next up: ${byName[ne.opp].rank <= 25 ? 'No. '+byName[ne.opp].rank+' ' : ''}${esc(ne.opp)}, where the LTF line is ${npr.pts===0 ? "a pick 'em" : esc(npr.fav.n)+' by '+npr.pts}.`;
-  const nextLine = !ne ? '' : `<a class="snext" href="${gameL(ne.game)}"><span><b>${ne.game.tbd ? 'Next' : esc(dayName(ne.game.d))}:</b> ${ne.site === 'A' ? 'at' : ne.site === 'N' ? 'vs' : 'vs'} ${byName[ne.opp] && byName[ne.opp].rank <= 25 ? 'No. '+byName[ne.opp].rank+' ' : ''}${esc(ne.opp)}${npr ? `, ${npr.pts===0 ? "a pick 'em" : esc(npr.fav.n)+' by '+npr.pts}` : ''}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></a>`;
-  const lead = `<section class="story" style="--tc:${esc(a.col)};--tf:${a.fg}" data-ab="${esc(a.ab)}">
-      <p class="kick">${logosOn() ? badge(a,'md') : ''}The LTF Index after week ${M.through}</p><h1>${head}</h1>
-      <p class="dek">${a.w}-${a.l}${firsts.length ? `, and first in the country in ${list(firsts)}` : ''}. ${esc(b.n)} is second, ${gap.toFixed(1)} points back.</p>
-      <div class="nums"><div class="big"><b>${a.idx.toFixed(1)}</b><span>LTF Index ${a.prevRank != null ? moveWords(a.move, a.prevRank) : ''}</span></div>${COMP.slice(0,3).map(c => `<div><b>${ord(a.rk[c.k])}</b><span>${c.name}</span></div>`).join('')}</div>
-      <div class="sacts"><a class="cta" href="${teamL(a)}">${esc(a.n)}'s page</a>${nextLine}</div></section>`;
-  const top = br.slice(0,10).map(t => rowB(t, t.rank, metaIdx(t))).join('');
+  const top = br.slice(0,25).map(t => rowB(t, t.rank, metaIdx(t))).join('');
   const pool = T.filter(t => t.move && (t.rank <= 60 || t.prevRank <= 60));
   const riser = [...pool].filter(t => t.move > 0).sort((x,y) => y.move-x.move)[0];
   const sleeper = M.apWeek != null ? br.find(t => !t.d.apr) : null;
@@ -99,8 +89,9 @@ function viewHome(){
       <li><b>It predicts, with receipts.</b> The <a class="txt" href="${L('picks')}">picks</a> carry a confidence score and the reasons behind it, and the <a class="txt" href="${L('scorecard')}">track record</a> grades every one. Think the formula is wrong? <a class="txt" href="${L('weights')}">Build your own</a>.</li></ol></details>
       <button type="button" class="ibtn" data-dismiss="start" aria-label="Hide this line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>`;
   const since = window._since && window._since.length ? `<section class="since" aria-label="Since your last visit"><b>Since your last visit:</b> ${window._since.map(x => `${tl(x.t)} ${x.from === x.t.rank ? `held at No. ${x.from}` : `went from No. ${x.from} to No. ${x.t.rank}`}`).join('. ')}.</section>` : '';
-  const body = `${start}${since}${mine}<div class="front">${lead}
-      <section class="sec"><h2>Top 10</h2><p class="hint">LTF Index, with movement since last week.</p><ol class="rows">${top}</ol><p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section></div>
+  const body = `${start}${since}${mine}
+      <section class="sec t25"><h2>LTF Top 25</h2><p class="hint">The LTF Index after week ${M.through}, with movement since last week. Every team is built from this season's games and nothing else.</p><ol class="rows t25rows">${top}</ol>
+      <p class="next linkrow"><a class="txt" href="${L('rankings')}">All ${T.length} teams</a>${shareBtn('top25', 'Share the Top 25', 'more inl sharebtn', [['top25','Top 25'],['top10','Top 10']])}</p></section>
     ${status}
     ${homeWeek()}
     ${tiles ? `<div class="tiles">${tiles}</div>` : ''}${pick}
@@ -270,7 +261,7 @@ function remaining(t){
 function viewTeam(){
   const t = bySlug[R.id]; if (!t) return viewNotFound();
   const conf = confByName[t.c], fl = favs(), fav = fl.includes(t), o = odds(t), st = stakes(t), sw = strengths(t);
-  const TABS = [['overview','Overview'], ['games','Games'], ['stats','Stats'], ['outlook','Outlook']];
+  const TABS = [['overview','Overview'], ['profile','Profile'], ['games','Games'], ['stats','Stats'], ['outlook','Outlook']];
   const tab = TABS.some(x => x[0] === R.q.tab) ? R.q.tab : 'overview';
   const parts = COMP.map(c => { const zv = t.z[c.k], w = clamp(Math.abs(zv)/3,0,1)*50;
     return `<tr><th scope="row">${term(c.k, c.name)}<span class="wt">${share(c.k)}% of the score</span></th>
@@ -305,6 +296,9 @@ function viewTeam(){
       ${t.luck == null ? '' : tileT(signed(t.luck), `Points a game of ${t.luck >= 0 ? 'good' : 'bad'} luck`)}
       ${t.swing != null && steadyWord(t) ? tileT(steadyWord(t), 'Week to week') : ''}</div>
       <p class="tlinks"><a class="txt" href="${L('momentum')}">Momentum</a><a class="txt" href="${L('luck')}">Luck</a><a class="txt" href="${L('compare', null, {a:t.slug, b:other.slug})}">Compare ${esc(t.n)}</a></p></section>` : ''}`;
+  else if (tab === 'profile') pane = `
+    <section class="tsec"><h2 class="th2">How they play</h2>${styleNotes(t)}</section>
+    <section class="tsec">${profileBlock(t)}<p class="tlinks">${shareBtn('radars:' + t.slug, 'Share this profile', 'more inl sharebtn', okAlts([['radars:' + t.slug, 'Wide'], ['radarsTall:' + t.slug, 'Tall']]))}<a class="txt" href="${L('styles')}">How every team plays</a><a class="txt" href="${L('compare', null, {a:t.slug, b:other.slug})}">Compare profiles</a></p></section>`;
   else if (tab === 'games') pane = `
     <section class="tsec"><h2 class="th2">Week by week</h2>${trend(t)}${range}</section>
     <section class="tsec"><h2 class="th2">Results</h2>${gameLog(t)}</section>

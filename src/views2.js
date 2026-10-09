@@ -96,7 +96,7 @@ function viewGame(){
   const tp = A && B ? `<section class="sec"><h2>${g.done ? 'How they compare now' : 'The matchup, stat by stat'}</h2>${tape(A, B)}
       <p class="next"><a class="txt" href="${L('compare', null, {a:A.slug, b:B.slug, site:g.n?'n':'b'})}">Open this matchup in the compare tool</a></p></section>` : '';
   return {title:`${g.a} ${g.n?'vs':'at'} ${g.h}`, top: crumbs([['Games', L('games')], [`Week ${g.w}`, L('games', null, {week:g.w})], [`${esc(g.a)} ${g.n?'vs':'at'} ${esc(g.h)}`]]),
-    body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${sections}${tp}
+    body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${sections}${tp}${A && B ? profileCompare(A, B, 'match') : ''}
 `};
 }
 
@@ -320,5 +320,6 @@ function viewCompare(){
       <div class="seg" role="group" aria-label="Where the game is played">${sl('n','Neutral site')}${sl('a',`At ${esc(A.ab)}`)}${sl('b',`At ${esc(B.ab)}`)}</div></div>
     <p class="verdict">${term('line')}: <b>${x.pts===0 ? "Pick 'em" : esc(x.fav.n)+' '+signed(-x.pts)}</b>. ${x.pts===0 ? 'A coin flip.' : `${esc(x.fav.n)} wins about ${pFav}% of the time.`} ${met}</p>
     ${advKey()}<div class="scroll"><table class="cmp"><thead><tr><th></th>${thc(A)}${thc(B)}</tr></thead><tbody>${body}</tbody></table></div>
-    <p class="hint after">Green marks the better number in each row, and the deeper the green, the bigger the gap. The small number beside it is the national rank. Shading goes by how far apart the two teams are next to the rest of the country. Tap a stat name for what it means.</p>`};
+    <p class="hint after">Green marks the better number in each row, and the deeper the green, the bigger the gap. The small number beside it is the national rank. Shading goes by how far apart the two teams are next to the rest of the country. Tap a stat name for what it means.</p>
+    ${profileCompare(A, B, 'same')}${profileCompare(A, B, 'match')}`};
 }
