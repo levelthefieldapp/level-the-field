@@ -1,6 +1,6 @@
 # Level the Field: the automatic update.
 #
-# Twice a day in season this gets fresh scores and play-by-play, rebuilds the site, checks it, and publishes it.
+# Twice a day in season, every half hour on game nights and Sunday nights, this gets fresh scores and play-by-play, rebuilds the site, checks it, and publishes it.
 # If any step fails, nothing is published, the site keeps showing the last good version, and the owner gets an email.
 #
 # The CollegeFootballData key is read from the repository secret named CFBD_API_KEY. It is never written to a file.
@@ -12,9 +12,23 @@ on:
     # August through January. Times are UTC: 11:17 is early morning Eastern, 19:17 is mid-afternoon Eastern.
     - cron: "17 11 * 1,8-12 *"
     - cron: "17 19 * 1,8-12 *"
+    # Game nights, every half hour, so each final shows up soon after the game ends: Thursdays and Fridays from 5 PM to
+    # 11:30 PM Mountain, and Saturdays from 10 AM to 1:30 AM. Sundays at 9:00 PM Mountain, for the weekend's play-by-play.
+    # GitHub's clock is UTC and does not move for daylight time, so each comes in two sets: daylight time (August to
+    # October) and standard time (November to January). Runs start at 7 and 37 past the hour, away from the busy top of
+    # the hour, and GitHub may still start a scheduled run a few minutes late.
+    - cron: "7,37 23 * 8-10 4,5"          # Thursday and Friday, 5:07 to 5:37 PM daylight time
+    - cron: "7,37 0-5 * 8-10 5,6"         # Thursday and Friday, 6:07 to 11:37 PM daylight time
+    - cron: "7,37 16-23 * 8-10 6"         # Saturday, 10:07 AM to 5:37 PM daylight time
+    - cron: "7,37 0-7 * 8-10 0"           # Saturday, 6:07 PM to 1:37 AM daylight time
+    - cron: "7,37 0-6 * 1,11,12 5,6"      # Thursday and Friday, 5:07 to 11:37 PM standard time
+    - cron: "7,37 17-23 * 1,11,12 6"      # Saturday, 10:07 AM to 4:37 PM standard time
+    - cron: "7,37 0-8 * 1,11,12 0"        # Saturday, 5:07 PM to 1:37 AM standard time
+    - cron: "0 3 * 8-10 1"                # Sunday, 9:00 PM daylight time
+    - cron: "0 4 * 1,11,12 1"             # Sunday, 9:00 PM standard time
   push:
     branches: [main]
-    paths-ignore: ["ledger.json", "logos/**", "README.md"]
+    paths-ignore: ["ledger.json", "logos/**", "raw/**", "README.md"]
   workflow_dispatch:
     inputs:
       test_alert:
@@ -61,6 +75,10 @@ jobs:
       - name: Get the site's files
         id: files
         uses: actions/checkout@v7
+        with:
+          # Always the newest files. A re-run of an old run would otherwise start from that run's files and fail to
+          # save, because the picks on file have moved on since.
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Find the site's address
         id: pages
@@ -119,10 +137,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ledger.json
           if [ -d logos ]; then git add logos; fi
+          # the comparisons are kept here between runs, so the game-night runs can skip pulling them again
+          if [ -f raw/cfb_api.json ]; then git add -f raw/cfb_api.json; fi
           if git diff --cached --quiet; then
             echo "Nothing new to save."
           else
-            git commit --quiet -m "Daily update: picks on file"
+            git commit --quiet -m "Update: picks on file and comparisons"
             git push --quiet || (git pull --quiet --rebase && git push --quiet)
           fi
 
