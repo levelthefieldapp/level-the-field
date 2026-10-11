@@ -64,27 +64,29 @@ function profileBlock(t){
   const one = side => `<div class="pfig"><h3 class="th2">${side === 'o' ? 'Offense' : 'Defense'}</h3>${radar([{label: `${t.n} ${side === 'o' ? 'offense' : 'defense'}`, vals: profileOf(t, side)}], {label: `${t.n} ${side === 'o' ? 'offense' : 'defense'} profile`})}${profileTable(t, side)}</div>`;
   return `<div class="pfigs">${one('o')}${one('d')}</div><p class="pkey"><span class="k run">Running</span><span class="k pass">Passing</span> 100 is the best in the country on that measure, 50 the middle, on both sides of the ball. Adjusted for opponent.</p>`;
 }
-function profileCompare(a, b, mode){      // two shapes on one chart. mode 'same': offense with offense; 'match': one offense against the other defense
+function profileCompare(a, b, mode, gid){      // two shapes on one chart. mode 'same': offense with offense; 'match': one offense against the other defense. gid: the game, if there is one
   if (!HAS_PROFILE) return '';
+  const key = gid != null ? 'g' + gid : `${a.slug}:${b.slug}`, k = mode === 'match' ? 'matchup' : 'pair';
+  const share = `<p class="tlinks">${shareBtn(`${k}:${key}`, mode === 'match' ? 'Share the matchup profiles' : 'Share these profiles', 'more inl sharebtn', okAlts([[`${k}:${key}`, 'Wide'], [`${k}Tall:${key}`, 'Tall']]))}</p>`;
   const fig = (x, sx, y, sy, title) => `<div class="pfig"><h3 class="th2">${title}</h3>${radar([{label: `${x.n} ${sx === 'o' ? 'offense' : 'defense'}`, vals: profileOf(x, sx)}, {label: `${y.n} ${sy === 'o' ? 'offense' : 'defense'}`, vals: profileOf(y, sy)}], {label: title})}
     <p class="plegend"><span class="k s0">${esc(x.n)} ${sx === 'o' ? 'offense' : 'defense'}</span><span class="k s1">${esc(y.n)} ${sy === 'o' ? 'offense' : 'defense'}</span></p></div>`;
   const body = mode === 'match'
     ? fig(a, 'o', b, 'd', `${esc(a.n)} with the ball`) + fig(b, 'o', a, 'd', `${esc(b.n)} with the ball`)
     : fig(a, 'o', b, 'o', 'Offense') + fig(a, 'd', b, 'd', 'Defense');
-  return `<section class="sec"><h2>${mode === 'match' ? 'Matchup profiles' : 'Profiles'}</h2><p class="hint">${mode === 'match' ? 'Each offense on the same chart as the defense it faces. Where the offense reaches past the defense, that is where it has the edge.' : 'Both teams on the same chart.'} 100 is the best in the country on that measure, 50 the middle. Adjusted for opponent.</p><div class="pfigs">${body}</div></section>`;
+  return `<section class="sec"><h2>${mode === 'match' ? 'Matchup profiles' : 'Profiles'}</h2><p class="hint">${mode === 'match' ? 'Each offense on the same chart as the defense it faces. Where the offense reaches past the defense, that is where it has the edge.' : 'Both teams on the same chart.'} 100 is the best in the country on that measure, 50 the middle. Adjusted for opponent.</p><div class="pfigs">${body}</div>${share}</section>`;
 }
 
 /* ================= matchups to watch ================= */
 /* The biggest gaps between an offense and the defense it faces, from the same opponent-adjusted ranks as the profiles.
    A gap of 40 spots or more, out of every FBS team, is worth a sentence. */
 const MATCH = [
-  {k:'ru',  o: (n, r) => `${n} ranks ${r} in rushing EPA per play`, d: (n, r) => `the ${n} run defense ranks ${r}`},
-  {k:'pa',  o: (n, r) => `${n} ranks ${r} in passing EPA per play`, d: (n, r) => `the ${n} pass defense ranks ${r}`},
-  {k:'exp', o: (n, r) => `${n} ranks ${r} in explosive play rate`, d: (n, r) => `the ${n} defense ranks ${r} at preventing big plays`},
-  {k:'ed',  o: (n, r) => `${n} ranks ${r} in EPA on early downs`, d: (n, r) => `the ${n} defense ranks ${r} on early downs`},
-  {k:'ld',  o: (n, r) => `${n} ranks ${r} in success rate on third and fourth down`, d: (n, r) => `the ${n} defense ranks ${r} on those downs`},
-  {k:'ly',  o: (n, r) => `${n} ranks ${r} in line yards per carry`, d: (n, r) => `the ${n} front ranks ${r} against the run`},
-  {k:'hav', o: (n, r) => `${n} ranks ${r} at avoiding sacks, turnovers and plays for a loss`, d: (n, r) => `the ${n} defense ranks ${r} at forcing them`},
+  {k:'ru',  s:'rushing EPA', o: (n, r) => `${n} ranks ${r} in rushing EPA per play`, d: (n, r) => `the ${n} run defense ranks ${r}`},
+  {k:'pa',  s:'passing EPA', o: (n, r) => `${n} ranks ${r} in passing EPA per play`, d: (n, r) => `the ${n} pass defense ranks ${r}`},
+  {k:'exp', s:'explosive plays', o: (n, r) => `${n} ranks ${r} in explosive play rate`, d: (n, r) => `the ${n} defense ranks ${r} at preventing big plays`},
+  {k:'ed',  s:'early downs', o: (n, r) => `${n} ranks ${r} in EPA on early downs`, d: (n, r) => `the ${n} defense ranks ${r} on early downs`},
+  {k:'ld',  s:'third and fourth down', o: (n, r) => `${n} ranks ${r} in success rate on third and fourth down`, d: (n, r) => `the ${n} defense ranks ${r} on those downs`},
+  {k:'ly',  s:'line yards', o: (n, r) => `${n} ranks ${r} in line yards per carry`, d: (n, r) => `the ${n} front ranks ${r} against the run`},
+  {k:'hav', s:'havoc', o: (n, r) => `${n} ranks ${r} at avoiding sacks, turnovers and plays for a loss`, d: (n, r) => `the ${n} defense ranks ${r} at forcing them`},
 ];
 const MATCH_GAP = 40;
 function matchNotes(off, dfn){      // [{kind: 'o' | 'd', gap, html}] for one offense against one defense
@@ -92,7 +94,8 @@ function matchNotes(off, dfn){      // [{kind: 'o' | 'd', gap, html}] for one of
   const xs = MATCH.map(m => ({m, ro: po[m.k] && po[m.k].r, rd: pd[m.k] && pd[m.k].r})).filter(x => x.ro && x.rd).map(x => ({...x, gap: x.rd - x.ro}));
   const say = x => `${up1(x.m.o(esc(off.n), ord(x.ro)))}, and ${x.m.d(esc(dfn.n), ord(x.rd))}.`;
   const edge = xs.filter(x => x.gap >= MATCH_GAP).sort((a, b) => b.gap - a.gap).slice(0, 2), hold = xs.filter(x => x.gap <= -MATCH_GAP).sort((a, b) => a.gap - b.gap).slice(0, 2);
-  return [...edge.map(x => ({kind:'o', gap:x.gap, html:say(x)})), ...hold.map(x => ({kind:'d', gap:x.gap, html:say(x)}))];
+  const short = (x, kind) => `Edge, ${esc(kind === 'o' ? off.n : dfn.n)} ${kind === 'o' ? 'offense' : 'defense'} on ${x.m.s}: ${esc(off.n)} offense ${ord(x.ro)}, ${esc(dfn.n)} defense ${ord(x.rd)}`;
+  return [...edge.map(x => ({kind:'o', gap:x.gap, html:say(x), short:short(x, 'o')})), ...hold.map(x => ({kind:'d', gap:x.gap, html:say(x), short:short(x, 'd')}))];
 }
 function matchupWatch(A, B){
   if (!HAS_PROFILE || !A || !B) return '';

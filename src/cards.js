@@ -181,16 +181,16 @@ const rankRow = t => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}${t.move ? `
 const cardGroup = g => !g || g === 'all' ? 'all' : GROUPS[g] || confBySlug[g] ? g : null;
 const cardIn = g => g === 'all' ? () => true : g === 'p4' ? t => t.tier === 'P4' : g === 'g6' ? t => t.tier === 'G6' : t => t.c === confBySlug[g].name;
 const cardGroupName = g => g === 'all' ? '' : GROUPS[g] || confBySlug[g].label;
-async function cardTop(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one, for every team or one group. q.by 'res' ranks by résumé.
+async function cardTop(c, W, H, q){   // the top 25 on a tall card, or the top 10 on a wide one, for every team or one group. q.by 'res' ranks by resume.
   const n = q.n, g = q.g, tall = H > W, P = 56, foot = tall ? 104 : 84, res = q.by === 'res', br = (res ? byResume() : byRank()).filter(cardIn(g)).slice(0, n);
   const wins = t => `${t.d.qw.length === 0 ? 'no' : t.d.qw.length} top-50 ${t.d.qw.length === 1 ? 'win' : 'wins'}`;
   const row = res ? (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${wins(t)}, LTF No. ${t.rank}`})
     : g === 'all' ? rankRow : (t, i) => ({t, rank:i + 1, name:t.n, note:`${t.w}-${t.l}, ${t.c}${t.rank !== i + 1 ? `, No. ${t.rank} nationally` : ''}`, val:t.idx.toFixed(1)});
-  const head = res ? (g === 'all' ? `Résumé Top ${n}` : `${cardGroupName(g)} résumé Top ${n}`) : g === 'all' ? `LTF Top ${n}` : `${cardGroupName(g)} Top ${n}`;
+  const head = res ? (g === 'all' ? `Resume Top ${n}` : `${cardGroupName(g)} resume Top ${n}`) : g === 'all' ? `LTF Top ${n}` : `${cardGroupName(g)} Top ${n}`;
   let y = cHead(c, W, P, head, tall ? (res ? `Who has earned the most so far: strength of record, quality wins and scoring margin. After week ${M.through}, ${M.season}.` : g === 'all' ? `Every FBS team on one scale. After week ${M.through}, ${M.season}.` : `${cardGroupName(g)} teams only, on the same scale as everyone. After week ${M.through}, ${M.season}.`) : null);
   const half = Math.ceil(n/2), gap = 44, cw = (W - P*2 - gap)/2, rowH = Math.floor((H - foot - y - (tall ? 20 : 16))/half), rows = br.map(row);
   await cRows(c, rows.slice(0, half), P, y, cw, rowH); await cRows(c, rows.slice(half), P + cw + gap, y, cw, rowH);
-  cFoot(c, W, H, foot, res ? `Résumé part of the LTF Index, after week ${M.through}` : weekNote());
+  cFoot(c, W, H, foot, res ? `Resume part of the LTF Index, after week ${M.through}` : weekNote());
 }
 async function cardConference(c, W, H, conf){   // one conference, every team in order
   const tall = H > W, P = 56, foot = tall ? 104 : 84, ts = tall ? conf.sorted : conf.sorted.slice(0, 10);
@@ -476,10 +476,14 @@ function cRadar(c, cx, cy, R0, vals, col, o = {}){   // the sixteen spokes on a 
     c.strokeStyle = v === 50 ? CK.muted : CK.line; c.lineWidth = v === 50 ? 1.5 : 1.2; c.setLineDash(v === 50 ? [4, 5] : []); c.stroke(); }
   c.setLineDash([]); c.strokeStyle = CK.line; c.lineWidth = 1;
   PAXES.forEach((_, i) => { const [x, y] = pt(i, 100); c.beginPath(); c.moveTo(cx, cy); c.lineTo(x, y); c.stroke(); });
-  const pts = PAXES.map((a, i) => pt(i, Math.max(3, vals[a.k] ? vals[a.k].p : 0)));
-  c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
-  c.save(); c.globalAlpha = .28; c.fillStyle = col; c.fill(); c.restore(); c.strokeStyle = col; c.lineWidth = o.lw || 3.5; c.lineJoin = 'round'; c.stroke();
-  pts.forEach(([x, y]) => { c.beginPath(); c.arc(x, y, o.dot || 5, 0, Math.PI*2); c.fillStyle = col; c.fill(); });
+  const series = Array.isArray(vals) ? vals : [{vals, col}];      // several shapes on one chart: [{vals, col, dash}]
+  for (const s of series){
+    const pts = PAXES.map((a, i) => pt(i, Math.max(3, s.vals[a.k] ? s.vals[a.k].p : 0)));
+    c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+    c.save(); c.globalAlpha = series.length > 1 ? .16 : .28; c.fillStyle = s.col; c.fill(); c.restore();
+    c.strokeStyle = s.col; c.lineWidth = o.lw || 3.5; c.lineJoin = 'round'; c.setLineDash(s.dash ? [11, 8] : []); c.stroke(); c.setLineDash([]);
+    pts.forEach(([x, y]) => { c.beginPath(); c.arc(x, y, (o.dot || 5) * (s.dash ? .85 : 1), 0, Math.PI*2); c.fillStyle = s.col; c.fill(); });
+  }
   PAXES.forEach((a, i) => { const [x, y] = pt(i, 100 + (o.gap || 14)*100/R0), cs = Math.cos(ang(i));
     cText(c, a.s, x, y, {px:o.px || 17, wt:650, color: a.g === 'run' ? CK.good : a.g === 'pass' ? '#B5440A' : CK.ink, align: Math.abs(cs) < 0.2 ? 'center' : cs > 0 ? 'left' : 'right', base:'middle', max: o.lab || 150}); });
 }
@@ -504,6 +508,51 @@ async function cardRadars(c, W, H, t){
   cFoot(c, W, H, foot, `Green: running. Orange: passing. Through week ${M.through}.`);
 }
 
+/* ---------- two teams on the same charts: each offense against the defense it faces, or offense with offense ---------- */
+function matchupCard(id, mode){      // "g401858256" for a game, or "ucf:oklahoma-state" for any two teams
+  if (!HAS_PROFILE) return null;
+  let A, B, g = null;
+  const m = /^g(\d+)$/.exec(String(id || ''));
+  if (m){ g = gameById[m[1]]; if (!g) return null; A = byName[g.a]; B = byName[g.h]; }
+  else { const [a, b] = String(id || '').split(':'); A = bySlug[a]; B = bySlug[b]; }
+  if (!A || !B || A === B || !(A.s && A.s.po) || !(B.s && B.s.po)) return null;
+  return {A, B, g, mode};
+}
+const mcTitle = d => `${d.A.n} ${d.g && !d.g.n ? 'at' : 'vs'} ${d.B.n}`;
+async function cardMatchup(c, W, H, d){
+  const tall = H > W, P = 56, foot = tall ? 104 : 84, hh = tall ? 170 : 112, OFF = CK.turf, DEF = CK.pylon;
+  const [ia, ib] = await Promise.all([cardLogo(d.A), cardLogo(d.B)]);
+  c.fillStyle = CK.paper; c.fillRect(0, 0, W, H);
+  c.fillStyle = CK.ink; c.fillRect(0, 0, W, hh);
+  const bs = tall ? 84 : 64; cBadge(c, d.A, ia, P, (hh - bs)/2, bs, true); cBadge(c, d.B, ib, P + bs + 22, (hh - bs)/2, bs, true);
+  const tx = P + 2*bs + 50, day = d.g ? new Date(d.g.d).toLocaleDateString('en-US', {timeZone:'America/New_York', weekday:'short', month:'short', day:'numeric'}) : '';
+  cText(c, mcTitle(d), tx, hh/2 - (tall ? 16 : 12), {px: tall ? 50 : 40, wt:900, w:'condensed', color:'#fff', max:W - tx - P, base:'middle'});
+  cText(c, `${d.mode === 'match' ? 'Matchup profiles' : 'Profiles side by side'}${day ? `, ${day}` : ''}. Percentiles among FBS teams, adjusted for opponent: 100 is the best, 50 the middle.`, tx, hh/2 + (tall ? 30 : 24),
+    {px: tall ? 22 : 17, wt:600, color:CK.barMuted, max:W - tx - P, base:'middle'});
+  const panes = d.mode === 'match'
+    ? [{title:`${d.A.n} with the ball`, s:[{vals:profileOf(d.A, 'o'), col:OFF, lab:`${d.A.n} offense`}, {vals:profileOf(d.B, 'd'), col:DEF, dash:true, lab:`${d.B.n} defense`}], off:d.A, dfn:d.B},
+       {title:`${d.B.n} with the ball`, s:[{vals:profileOf(d.B, 'o'), col:OFF, lab:`${d.B.n} offense`}, {vals:profileOf(d.A, 'd'), col:DEF, dash:true, lab:`${d.A.n} defense`}], off:d.B, dfn:d.A}]
+    : [{title:'Offense', s:[{vals:profileOf(d.A, 'o'), col:OFF, lab:d.A.n}, {vals:profileOf(d.B, 'o'), col:DEF, dash:true, lab:d.B.n}]},
+       {title:'Defense', s:[{vals:profileOf(d.A, 'd'), col:OFF, lab:d.A.n}, {vals:profileOf(d.B, 'd'), col:DEF, dash:true, lab:d.B.n}]}];
+  const bottom = H - foot, ph = tall ? (bottom - hh)/2 : bottom - hh, pw = tall ? W : W/2;
+  const legend = (s, x, y, max) => { let at = x;      // a solid swatch for the first shape, a dashed one for the second
+    s.forEach((q, i) => { c.fillStyle = q.col;
+      if (q.dash){ for (let k = 0; k < 3; k++) c.fillRect(at + k*9, y - 3, 6, 6); } else c.fillRect(at, y - 8, 24, 16);
+      at += 34; at += cText(c, q.lab, at, y + 1, {px: tall ? 22 : 16, wt:650, color:CK.ink, base:'middle', max:(max - 80)/2}) + 30; }); };
+  panes.forEach((p, i) => {
+    const x0 = tall ? 0 : i*pw, y0 = hh + (tall ? i*ph : 0), px = x0 + (tall ? P : 34);
+    cText(c, p.title, px, y0 + (tall ? 48 : 40), {px: tall ? 38 : 28, wt:900, it:true, w:'condensed', color:CK.ink, max:pw - 2*(tall ? P : 34)});
+    legend(p.s, px, y0 + (tall ? 88 : 70), pw - 2*(tall ? P : 34));
+    let top = y0 + (tall ? 104 : 80);
+    if (tall && p.off){ const n = matchNotes(p.off, p.dfn).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0];
+      cText(c, n ? plain(n.short) : `No gap of ${MATCH_GAP} spots or more on any measure.`, px, y0 + 126, {px:21, wt:600, color: n ? (n.kind === 'o' ? CK.good : CK.bad) : CK.muted, base:'middle', max:pw - 2*P}); top = y0 + 140; }
+    const R0 = tall ? Math.min(178, (y0 + ph - top)/2 - 34) : Math.min(140, (y0 + ph - top)/2 - 30), cy = (top + y0 + ph)/2 + (tall ? 6 : 4);
+    cRadar(c, x0 + pw/2, cy, R0, p.s, null, {px: tall ? 19 : 14, gap: tall ? 15 : 11, lab: tall ? 200 : 122, dot: tall ? 5.5 : 4, lw: tall ? 3.5 : 3});
+  });
+  if (!tall){ c.fillStyle = CK.line; c.fillRect(W/2 - 1, hh + 24, 2, bottom - hh - 48); } else { c.fillStyle = CK.line; c.fillRect(P, hh + ph, W - 2*P, 2); }
+  cFoot(c, W, H, foot, d.mode === 'match' ? `Solid: the offense. Dashed: the defense it faces. Through week ${M.through}.` : `Solid: ${d.A.n}. Dashed: ${d.B.n}. Through week ${M.through}.`);
+}
+
 /* ---------- LTF and the market ---------- */
 async function cardMarket(c, W, H, d){
   const row = (t, up) => ({t, rank:t.rank, name:t.n, note:`${t.w}-${t.l}, market No. ${d.mk.rank.get(t)}`, val:`+${Math.abs(d.mk.rank.get(t) - t.rank)}`, valColor: up ? CK.good : CK.bad});
@@ -512,6 +561,49 @@ async function cardMarket(c, W, H, d){
 }
 
 /* ---------- draw any card ---------- */
+/* ---------- did you beat the bye, and fraud watch ---------- */
+function byeCard(id){   // the teams that were off in one week: who climbed and who slipped. No id is the latest week.
+  const ws = byeWeeks(), w = id ? +id : ws[ws.length - 1]; if (!ws.includes(w)) return null;
+  const rows = byeRows(w); if (!rows.length) return null;
+  return {w, up: rows.filter(r => r.mv > 0).slice(0, 5), down: rows.filter(r => r.mv < 0).reverse().slice(0, 5), n: rows.length};
+}
+async function cardBye(c, W, H, d){
+  const row = r => ({t:r.t, rank:r.b.rank, name:r.t.n, note:`${r.b.rec}, was No. ${r.a.rank}`, val:signedTxt(r.mv, 0), valColor: r.mv > 0 ? CK.good : CK.bad});
+  await cTwo(c, W, H, 'Did you beat the bye?', [{title:'Beat the bye', color:CK.good, sub:'spots while off', rows:d.up.map(row)}, {title:'Lost to the bye', color:CK.bad, sub:'spots while off', rows:d.down.map(row)}],
+    `Teams with no game in week ${d.w}. LTF rank before and after.`);
+}
+function fraudCard(id){   // the teams on fraud watch, for every team or one group
+  const g = cardGroup(id); if (!g || M.through == null || M.through < 3) return null;
+  const fl = frFlagged().filter(f => cardIn(g)(f.t)); if (!fl.length) return null;
+  return {g, alert: fl.filter(f => f.tier === 'alert').slice(0, 5), watch: fl.filter(f => f.tier === 'watch').slice(0, 5)};
+}
+async function cardFraud(c, W, H, d){
+  const row = f => ({t:f.t, name:f.t.n, note:`${f.t.w}-${f.t.l}, ${f.apr && f.apr === f.seen ? `AP No. ${f.apr}` : `resume No. ${f.res}`}`, val:`No. ${f.play}`, valColor: f.tier === 'alert' ? CK.bad : CK.ink});
+  await cTwo(c, W, H, d.g === 'all' ? 'Fraud watch' : `${cardGroupName(d.g)} fraud watch`, [{title:'Fraud alert', color:CK.bad, sub:'plays like', rows:d.alert.map(row), valW:150}, {title:'On watch', color:CK.pylon, sub:'plays like', rows:d.watch.map(row), valW:150}],
+    `Seen as good, playing worse. LTF Index after week ${M.through}.`, false);
+}
+function trialCard(id){ const t = bySlug[id]; return t && M.through != null && frOf(t) && frOf(t).gp >= 3 ? t : null; }
+async function cardTrial(c, W, H, t){   // one team's fraud verdict
+  const f = frOf(t), im = await cardLogo(t), P = 56, foot = 84;
+  const word = t.w <= t.l ? 'Not a fraud' : !f.tier ? 'Not on the radar' : FR_WORD[f.tier];
+  const col = f.tier === 'alert' ? CK.bad : f.tier === 'watch' ? CK.pylon : f.tier ? CK.good : CK.ink;
+  let y = cHead(c, W, P, `Is ${t.n} a fraud?`, null);
+  cBadge(c, t, im, P, y + 6, 150);
+  cText(c, 'LTF says', P + 186, y + 40, {px:28, wt:650, color:CK.muted});
+  cText(c, word, P + 184, y + 128, {px:104, wt:900, it:true, w:'condensed', color:col, max:W - P*2 - 200});
+  const p = projection(t), total = t.w + t.l + p.left.length;
+  const tiles = [...(M.apWeek == null ? [] : [['AP poll', f.apr ? `No. ${f.apr}` : 'Unranked']]), ['Resume', `No. ${f.res}`], ['Plays like', `No. ${f.play}`], ['Record', `${t.w}-${t.l}`], ...(p.left.length ? [['LTF expects', `${Math.round(p.w)}-${total - Math.round(p.w)}`]] : [])];
+  const ty = y + 214, tw = (W - P*2)/tiles.length;
+  tiles.forEach(([lab, val], i) => { const tx = P + i*tw;
+    if (i){ c.fillStyle = CK.line; c.fillRect(tx - 16, ty - 30, 2, 108); }
+    cText(c, lab, tx, ty, {px:24, wt:600, color:CK.muted, max:tw - 32});
+    cText(c, val, tx, ty + 62, {px:56, wt:900, it:true, w:'condensed', color: lab === 'Plays like' ? col : CK.ink, max:tw - 32}); });
+  const cs = frCase(f), why = f.tier === 'alert' || f.tier === 'watch' ? (cs.against[1] || cs.against[0]) : f.tier ? (cs.forT[1] || cs.forT[0])
+    : t.w <= t.l ? `At ${t.w}-${t.l}, nobody is calling them good yet.` : `Their resume ranks ${ord(f.res)}${M.apWeek == null ? '' : ' and the AP does not rank them'}, so nobody is calling them good yet.`;
+  if (why) cText(c, plain(why), P, ty + 128, {px:27, wt:550, color:CK.muted, max:W - P*2});
+  cFoot(c, W, H, foot, `How they play is the LTF Index without the resume part. After week ${M.through}.`);
+}
+
 const CARDS = {
   team:       {shape:'wide', get: id => bySlug[id], draw: cardTeam, name: t => t.n},
   game:       {shape:'wide', get: id => gameById[id], draw: cardGame, name: g => `${g.a} ${g.n ? 'vs' : 'at'} ${g.h}`},
@@ -529,13 +621,20 @@ const CARDS = {
   conferences:{shape:'wide', get: () => true, draw: cardConferences, name: () => 'Conference power rankings'},
   receipts:   {shape:'wide', get: id => receipts(id), draw: cardReceipts, name: r => `LTF picks, week ${r.week}`},
   buysell:    {shape:'wide', get: () => buySellCard(), draw: cardBuySell, name: () => 'Buying and selling'},
-  resume:     {shape:'tall', get: id => { const g = cardGroup(id); return g ? {n:25, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Résumé Top 25' : `${cardGroupName(q.g)} résumé Top 25`},
-  resume10:   {shape:'wide', get: id => { const g = cardGroup(id); return g ? {n:10, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Résumé Top 10' : `${cardGroupName(q.g)} résumé Top 10`},
+  resume:     {shape:'tall', get: id => { const g = cardGroup(id); return g ? {n:25, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Resume Top 25' : `${cardGroupName(q.g)} resume Top 25`},
+  resume10:   {shape:'wide', get: id => { const g = cardGroup(id); return g ? {n:10, g, by:'res'} : null; }, draw: cardTop, name: q => q.g === 'all' ? 'Resume Top 10' : `${cardGroupName(q.g)} resume Top 10`},
   stat:       {shape:'tall', get: id => statCardData(id, 25), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}`},
   stat10:     {shape:'wide', get: id => statCardData(id, 10), draw: cardStat, name: q => `${statTitle(q)}${q.side === 'd' && q.d.side !== 'team' ? ', defense' : ''}${q.g === 'all' ? '' : `, ${cardGroupName(q.g)}`}, top 10`},
   radars:     {shape:'wide', get: id => HAS_PROFILE && bySlug[id] && bySlug[id].s && bySlug[id].s.po ? bySlug[id] : null, draw: cardRadars, name: t => `${t.n}, how they play`},
   radarsTall: {shape:'tall', get: id => HAS_PROFILE && bySlug[id] && bySlug[id].s && bySlug[id].s.po ? bySlug[id] : null, draw: cardRadars, name: t => `${t.n}, how they play`},
+  matchup:    {shape:'wide', get: id => matchupCard(id, 'match'), draw: cardMatchup, name: d => `${mcTitle(d)}, matchup profiles`},
+  matchupTall:{shape:'tall', get: id => matchupCard(id, 'match'), draw: cardMatchup, name: d => `${mcTitle(d)}, matchup profiles`},
+  pair:       {shape:'wide', get: id => matchupCard(id, 'same'), draw: cardMatchup, name: d => `${mcTitle(d)}, profiles`},
+  pairTall:   {shape:'tall', get: id => matchupCard(id, 'same'), draw: cardMatchup, name: d => `${mcTitle(d)}, profiles`},
   market:     {shape:'wide', get: () => marketCard(), draw: cardMarket, name: () => 'LTF and the market'},
+  bye:        {shape:'wide', get: id => byeCard(id), draw: cardBye, name: d => `Did you beat the bye? Week ${d.w}`},
+  fraud:      {shape:'wide', get: id => fraudCard(id), draw: cardFraud, name: d => d.g === 'all' ? 'Fraud watch' : `${cardGroupName(d.g)} fraud watch`},
+  trial:      {shape:'wide', get: id => trialCard(id), draw: cardTrial, name: t => `${t.n}, fraud verdict`},
 };
 async function drawCard(kind, id, shape){   // returns a canvas, or null if there is no such card
   const k = CARDS[kind], what = k && k.get(id); if (!what) return null;
@@ -607,7 +706,8 @@ function sheetClick(b){   // a button inside the panel
 /* During the daily update a browser opens the site with #!cards=team/alabama,game/123,... after the address. Instead of
    drawing a page, the site draws those cards and leaves them in the document for the update to collect. */
 const CARD_FILES = {'list/top10': ['top10', ''], 'list/top25': ['top25', ''], 'list/tiers': ['tiers', ''], 'list/polls': ['polls', ''], 'list/conferences': ['conferences', ''], 'list/receipts': ['receipts', ''], 'list/buysell': ['buysell', ''],
-                    'list/radar': ['radar', ''], 'list/upsets': ['upsets', ''], 'list/movers': ['movers', ''], 'list/momentum': ['momentum', ''], 'list/luck': ['luck', ''], 'list/market': ['market', '']};
+                    'list/radar': ['radar', ''], 'list/upsets': ['upsets', ''], 'list/movers': ['movers', ''], 'list/momentum': ['momentum', ''], 'list/luck': ['luck', ''], 'list/market': ['market', ''],
+                    'list/fraud': ['fraud', ''], 'list/bye': ['bye', '']};
 async function exportCards(list){
   const out = {};
   for (const name of list){

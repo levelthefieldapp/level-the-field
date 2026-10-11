@@ -96,7 +96,7 @@ function viewGame(){
   const tp = A && B ? `<section class="sec"><h2>${g.done ? 'How they compare now' : 'The matchup, stat by stat'}</h2>${tape(A, B)}
       <p class="next"><a class="txt" href="${L('compare', null, {a:A.slug, b:B.slug, site:g.n?'n':'b'})}">Open this matchup in the compare tool</a></p></section>` : '';
   return {title:`${g.a} ${g.n?'vs':'at'} ${g.h}`, top: crumbs([['Games', L('games')], [`Week ${g.w}`, L('games', null, {week:g.w})], [`${esc(g.a)} ${g.n?'vs':'at'} ${esc(g.h)}`]]),
-    body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${fileNote(g) ? `<p class="filed">${fileNote(g)}</p>` : ''}${sections}${tp}${A && B ? matchupWatch(A, B) + profileCompare(A, B, 'match') : ''}
+    body: `${head}<p class="pdek gstory">${story}</p>${A && B ? `<p class="gshare">${shareBtn('game:' + g.id)}</p>` : ''}<div class="facts">${facts}</div>${fileNote(g) ? `<p class="filed">${fileNote(g)}</p>` : ''}${sections}${tp}${A && B ? matchupWatch(A, B) + profileCompare(A, B, 'match', g.id) : ''}
 `};
 }
 
@@ -106,7 +106,7 @@ const AXES = [
   {k:'idx', n:'LTF Index', grp:'LTF', get:t => t.idx, d:1},
   {k:'off', n:'Offense rating', grp:'LTF', get:t => rating(t.z.off), d:0},
   {k:'def', n:'Defense rating', grp:'LTF', get:t => rating(t.z.def), d:0},
-  {k:'res', n:'Résumé rating', grp:'LTF', get:t => rating(t.z.res), d:0},
+  {k:'res', n:'Resume rating', grp:'LTF', get:t => rating(t.z.res), d:0},
   {k:'mar', n:'Scoring margin rating', grp:'LTF', get:t => rating(t.z.mar), d:0},
   {k:'h1', n:'First-half rating', grp:'LTF', get:t => rating(t.z.h1), d:0},
   {k:'marp', n:'Scoring margin, points a game', grp:'LTF', get:t => t.d.mar, d:1, sign:true},

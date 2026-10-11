@@ -92,7 +92,8 @@ HFA = 2.5            # home field, in points
 SIGMA = 16.0         # std dev of a game result around its expected margin
 MARGIN_CAP = 24      # blowouts count for no more than this
 FCS_RATING = -20.0   # every FCS opponent is treated as 20 points below an average FBS team
-ALPHA_PLAY = 2.5     # ridge strength for per-play efficiency numbers
+ALPHA_PLAY = 1.0     # ridge strength for per-play efficiency numbers. Was 2.5 until October 10, 2026: tested on 2014 to 2025, 1.0 matches
+                     # each defense (and offense) to the rest of its season better, with game picks unchanged. See the status doc.
 ALPHA_MARGIN = 1.5   # ridge strength for scoring margin, full game and first half
 ALPHA_TIER = 0.3     # how firmly the gap between the power leagues and everyone else is held. Loosely: this season's games set it.
 ALPHA_LEAGUE = 40.0  # how firmly one league is held level with the others in its tier. Very: only a clear record between them moves it.
@@ -101,7 +102,7 @@ H1_FBS_ONLY = True   # The first-half part uses games between FBS teams only: a 
 H1_LEAGUES = True    # little. League strength is on, as in the other parts. Both were compared in research/bt_variants.py.
 POOL = "~lower division"     # every lower-division opponent, treated as one pooled team
 # The LTF Index: the share each part gets. Changed October 7, 2026 to use this season only. Until then the parts were
-# résumé 20, offense 25, defense 25 and computer ratings 30 (SP+, FPI, SRS and Elo, which all carry earlier seasons).
+# resume 20, offense 25, defense 25 and computer ratings 30 (SP+, FPI, SRS and Elo, which all carry earlier seasons).
 WEIGHTS = {"res": 20, "off": 25, "def": 25, "mar": 20, "h1": 10}
 FORMULA = 2          # the version of the formula a number on file was made with. 1 was the formula before October 7, 2026.
 # Fields that sat beside a number on file before October 7, 2026: betting lines and totals, and the retired prediction
@@ -109,7 +110,7 @@ FORMULA = 2          # the version of the formula a number on file was made with
 RETIRED_KEYS = ("mm", "mt", "ho", "hs", "oo", "ou", "tb", "v")
 GARBAGE = {1: 43, 2: 37, 3: 27, 4: 21}
 
-# The résumé recipe: the share each piece gets. Until October 6, 2026 it was strength of record 40, quality wins 20,
+# The resume recipe: the share each piece gets. Until October 6, 2026 it was strength of record 40, quality wins 20,
 # losses 15, margin 15 and schedule strength 10. Two of those were dropped after a test on 2021 to 2025
 # (research/resume_study.py): the losses piece was the win-loss record over again, and schedule strength was being
 # counted twice, since strength of record already allows for who a team has played. Accuracy was unchanged.
@@ -131,13 +132,14 @@ RESUME = {"sor": 0.65, "qw": 0.20, "mar": 0.15}
 # LEAGUE_CHECK: in games between two different power leagues, how far each league's teams beat or fell short of the
 #   LTF line, and how far the line fell short when a power team played a team from another league.
 #<<backtest
-SLOPE = {2: 8.5, 3: 9.56, 4: 9.95, 5: 10.45, 6: 10.83, 7: 11.38, 8: 11.61, 9: 11.95, 10: 12.07, 11: 12.13, 12: 12.53}
-BACKTEST = {"seasons": "2014 to 2025", "n": 12, "games": 7452, "su": 72.3, "miss": 13.1, "mktGames": 7450, "mktSu": 74.2, "mktMiss": 12.3, "ltfOnMkt": 72.3, "ltfMissOnMkt": 13.1, "cal": [{"lo": 50, "hi": 55, "n": 968, "pred": 52.4, "act": 53.1}, {"lo": 55, "hi": 60, "n": 961, "pred": 57.4, "act": 55.9}, {"lo": 60, "hi": 65, "n": 965, "pred": 62.4, "act": 66.4}, {"lo": 65, "hi": 70, "n": 886, "pred": 67.4, "act": 69.9}, {"lo": 70, "hi": 75, "n": 774, "pred": 72.4, "act": 74.5}, {"lo": 75, "hi": 80, "n": 767, "pred": 77.5, "act": 80.2}, {"lo": 80, "hi": 85, "n": 752, "pred": 82.4, "act": 82.0}, {"lo": 85, "hi": 90, "n": 564, "pred": 87.4, "act": 87.1}, {"lo": 90, "hi": 95, "n": 507, "pred": 92.3, "act": 94.1}, {"lo": 95, "hi": 100, "n": 308, "pred": 97.0, "act": 96.4}], "conf": [{"lo": 50, "hi": 60, "label": "Toss-up", "n": 1929, "act": 54.5}, {"lo": 60, "hi": 75, "label": "Lean", "n": 2625, "act": 70.0}, {"lo": 75, "hi": 90, "label": "Likely", "n": 2083, "act": 82.7}, {"lo": 90, "hi": 100, "label": "Very likely", "n": 815, "act": 95.0}], "dog": [{"lo": 40, "hi": 50, "n": 1929, "pred": 45.1, "act": 45.5}, {"lo": 30, "hi": 40, "n": 1851, "pred": 35.2, "act": 31.9}, {"lo": 20, "hi": 30, "n": 1541, "pred": 25.0, "act": 22.6}, {"lo": 10, "hi": 20, "n": 1316, "pred": 15.5, "act": 15.8}, {"lo": 0, "hi": 10, "n": 815, "pred": 5.9, "act": 5.0}], "byWeek": [{"lab": "Weeks 3 and 4", "n": 1135, "su": 72.7, "miss": 14.0, "mktSu": 78.0, "mktMiss": 12.2}, {"lab": "Weeks 5 to 7", "n": 1854, "su": 68.9, "miss": 13.0, "mktSu": 73.2, "mktMiss": 12.1}, {"lab": "Weeks 8 to 10", "n": 1923, "su": 72.7, "miss": 13.0, "mktSu": 73.0, "mktMiss": 12.5}, {"lab": "Weeks 11 to 13", "n": 2056, "su": 74.4, "miss": 12.8, "mktSu": 74.8, "mktMiss": 12.4}, {"lab": "Weeks 14 and 15", "n": 484, "su": 73.1, "miss": 12.6, "mktSu": 71.1, "mktMiss": 12.4}], "bySeason": {"best": 76.1, "worst": 69.7}, "gw": {"3": 0.701, "4": 0.534, "5": 0.466, "6": 0.404, "7": 0.343, "8": 0.313, "9": 0.287, "10": 0.261, "11": 0.231, "12": 0.219, "13": 0.202, "14": 0.206}, "gamma": 0.206, "w6": {"games": 4968, "rows": [{"lab": "Résumé only", "miss": 14.28, "su": 67.7}, {"lab": "Scoring margin only", "miss": 13.71, "su": 69.9}, {"lab": "Offense and defense only", "miss": 13.52, "su": 70.5}, {"lab": "60 / 10 / 10 / 10 / 10", "miss": 13.83, "su": 69.2}, {"lab": "Even, 20 each", "miss": 13.52, "su": 70.7}, {"lab": "20 / 25 / 25 / 20 / 10, the LTF Index", "miss": 13.49, "su": 70.7}, {"lab": "Best fit the data could find, 10 / 40 / 30 / 10 / 10", "miss": 13.45, "su": 70.6}, {"lab": "Betting line, for comparison", "miss": 12.41, "su": 73.4}]}, "was": {"games": 7452, "su": 72.4, "miss": 13.0, "bare": {"games": 7452, "su": 71.1, "miss": 13.4}}}
-CONFIDENCE = {"hz": [{"lab": "next week", "lo": 1, "hi": 1, "n": 7452, "act": 72.3, "pred": 71.0}, {"lab": "two or three weeks out", "lo": 2, "hi": 3, "n": 13088, "act": 70.5, "pred": 70.2}, {"lab": "four to six weeks out", "lo": 4, "hi": 6, "n": 14824, "act": 69.2, "pred": 69.3}, {"lab": "seven or more weeks out", "lo": 7, "hi": 99, "n": 12408, "act": 67.4, "pred": 67.7}], "steady": {"n": 2076, "pred": 71.0, "act": 72.9}, "updown": {"n": 2076, "pred": 70.8, "act": 71.1}}
-MOMENTUM = {"seasons": "2014 to 2025", "games": 6920, "carry": {"n": 13339, "corr": 0.034, "hot": 51.7, "hotN": 2628, "cold": 48.2, "coldN": 2600}, "fav": {"hot": {"n": 1384, "pred": 74.7, "act": 75.9}, "cold": {"n": 1384, "pred": 67.9, "act": 68.9}}, "fix": {"n": 6920, "gain": 0.001, "win": -0.06, "better": 7, "of": 12}, "upL": {"n": 672, "ltf": 0.2, "se": 0.6, "won": 53.0, "pos": 6, "yrs": 12}, "upW": {"n": 663, "ltf": 0.1, "se": 0.6, "won": 45.9, "pos": 7, "yrs": 12}}
-LEAGUE_CHECK = {"seasons": "2014 to 2025", "pp": {"n": 238, "su": 71.8, "miss": 13.4}, "cross": {"n": 626, "su": 83.2, "short": 4.0, "won": 83.5, "by": 18.9, "before": 10.8}, "lean": [{"lg": "SEC", "n": 78, "by": 0.1, "se": 1.9, "beat": 38}, {"lg": "Big Ten", "n": 64, "by": -1.5, "se": 2.3, "beat": 30}, {"lg": "Big 12", "n": 42, "by": 7.3, "se": 2.4, "beat": 29}, {"lg": "ACC", "n": 158, "by": -4.2, "se": 1.3, "beat": 60}, {"lg": "Pac-12", "n": 40, "by": 1.2, "se": 2.6, "beat": 23}, {"lg": "Notre Dame", "n": 94, "by": 4.1, "se": 1.7, "beat": 58}], "rec": [{"lg": "SEC", "w": 93, "l": 71, "by": 2.6}, {"lg": "Big Ten", "w": 72, "l": 77, "by": -0.4}, {"lg": "Big 12", "w": 55, "l": 59, "by": 1.0}, {"lg": "ACC", "w": 88, "l": 157, "by": -6.6}, {"lg": "Pac-12", "w": 49, "l": 47, "by": -2.8}, {"lg": "Notre Dame", "w": 82, "l": 28, "by": 12.8}], "pairs": [{"a": "SEC", "b": "ACC", "w": 54, "l": 41, "by": 3.7}, {"a": "SEC", "b": "Big 12", "w": 17, "l": 12, "by": 0.8}, {"a": "SEC", "b": "Big Ten", "w": 8, "l": 9, "by": 0.3}, {"a": "Big Ten", "b": "ACC", "w": 26, "l": 23, "by": 1.5}, {"a": "Big Ten", "b": "Big 12", "w": 19, "l": 15, "by": 1.3}, {"a": "Big 12", "b": "ACC", "w": 17, "l": 12, "by": 3.5}], "b12Early": 41, "top25": {"SEC": 7.2, "Pac-12": 3.2, "Big 12": 4.1, "Big Ten": 4.8, "ACC": 3.8, "Other": 1.1, "Notre Dame": 0.8}, "without": {"su": 71.8, "miss": 13.3}}
-BUYSELL = {"seasons": "2014 to 2025", "weeks": 132, "sell": {"n": 374, "per": 2.8, "before": 78.1, "exp": 41.7, "act": 39.5, "w": 416, "l": 636, "none": 20, "of": 12, "rec": 61.8, "seasons": 12}, "buy": {"n": 731, "per": 5.5, "before": 43.8, "exp": 59.5, "act": 58.9, "w": 1225, "l": 856, "none": 17, "of": 12, "rec": 56.2, "seasons": 12}}
-VSLINE = {"seasons": "2014 to 2025", "games": 7450, "split": {"n": 901, "w": 381, "l": 520, "pct": 42.3, "seasons": 0, "of": 12, "early": {"n": 471, "w": 166, "l": 305, "pct": 35.2}, "late": {"n": 430, "w": 215, "l": 215, "pct": 50.0}}, "gaps": [{"lo": 0, "n": 7450, "w": 3658, "l": 3658, "beat": 50.0, "closer": 44.4}, {"lo": 3, "n": 4057, "w": 2015, "l": 1963, "beat": 50.7, "closer": 42.2}, {"lo": 7, "n": 1375, "w": 690, "l": 661, "beat": 51.1, "closer": 38.0}, {"lo": 10, "n": 574, "w": 283, "l": 280, "beat": 50.3, "closer": 33.8}]}
+SLOPE = {2: 7.92, 3: 8.94, 4: 9.35, 5: 9.87, 6: 10.3, 7: 10.89, 8: 11.16, 9: 11.53, 10: 11.68, 11: 11.76, 12: 12.13}
+BACKTEST = {"seasons": "2014 to 2025", "n": 12, "games": 7452, "su": 72.3, "miss": 13.1, "mktGames": 7450, "mktSu": 74.2, "mktMiss": 12.3, "ltfOnMkt": 72.3, "ltfMissOnMkt": 13.1, "cal": [{"lo": 50, "hi": 55, "n": 997, "pred": 52.5, "act": 54.4}, {"lo": 55, "hi": 60, "n": 939, "pred": 57.5, "act": 55.0}, {"lo": 60, "hi": 65, "n": 968, "pred": 62.4, "act": 66.1}, {"lo": 65, "hi": 70, "n": 881, "pred": 67.4, "act": 69.8}, {"lo": 70, "hi": 75, "n": 786, "pred": 72.5, "act": 74.7}, {"lo": 75, "hi": 80, "n": 788, "pred": 77.5, "act": 80.6}, {"lo": 80, "hi": 85, "n": 748, "pred": 82.4, "act": 82.5}, {"lo": 85, "hi": 90, "n": 572, "pred": 87.4, "act": 87.9}, {"lo": 90, "hi": 95, "n": 487, "pred": 92.4, "act": 93.2}, {"lo": 95, "hi": 100, "n": 286, "pred": 97.0, "act": 96.9}], "conf": [{"lo": 50, "hi": 60, "label": "Toss-up", "n": 1936, "act": 54.6}, {"lo": 60, "hi": 75, "label": "Lean", "n": 2635, "act": 69.9}, {"lo": 75, "hi": 90, "label": "Likely", "n": 2108, "act": 83.3}, {"lo": 90, "hi": 100, "label": "Very likely", "n": 773, "act": 94.6}], "dog": [{"lo": 40, "hi": 50, "n": 1936, "pred": 45.1, "act": 45.4}, {"lo": 30, "hi": 40, "n": 1849, "pred": 35.2, "act": 32.1}, {"lo": 20, "hi": 30, "n": 1574, "pred": 25.0, "act": 22.4}, {"lo": 10, "hi": 20, "n": 1320, "pred": 15.4, "act": 15.2}, {"lo": 0, "hi": 10, "n": 773, "pred": 5.9, "act": 5.4}], "byWeek": [{"lab": "Weeks 3 and 4", "n": 1135, "su": 73.0, "miss": 14.1, "mktSu": 78.0, "mktMiss": 12.2}, {"lab": "Weeks 5 to 7", "n": 1854, "su": 68.9, "miss": 13.1, "mktSu": 73.2, "mktMiss": 12.1}, {"lab": "Weeks 8 to 10", "n": 1923, "su": 72.6, "miss": 13.0, "mktSu": 73.0, "mktMiss": 12.5}, {"lab": "Weeks 11 to 13", "n": 2056, "su": 74.5, "miss": 12.8, "mktSu": 74.8, "mktMiss": 12.4}, {"lab": "Weeks 14 and 15", "n": 484, "su": 72.7, "miss": 12.6, "mktSu": 71.1, "mktMiss": 12.4}], "bySeason": {"best": 75.5, "worst": 69.8}, "gw": {"3": 0.728, "4": 0.551, "5": 0.479, "6": 0.422, "7": 0.354, "8": 0.324, "9": 0.295, "10": 0.268, "11": 0.235, "12": 0.224, "13": 0.207, "14": 0.211}, "gamma": 0.211, "w6": {"games": 4968, "rows": [{"lab": "Résumé only", "miss": 14.28, "su": 68.0}, {"lab": "Scoring margin only", "miss": 13.71, "su": 69.9}, {"lab": "Offense and defense only", "miss": 13.59, "su": 70.2}, {"lab": "60 / 10 / 10 / 10 / 10", "miss": 13.83, "su": 69.6}, {"lab": "Even, 20 each", "miss": 13.53, "su": 70.8}, {"lab": "20 / 25 / 25 / 20 / 10, the LTF Index", "miss": 13.52, "su": 70.7}, {"lab": "Best fit the data could find, 10 / 30 / 30 / 20 / 10", "miss": 13.49, "su": 70.9}, {"lab": "Betting line, for comparison", "miss": 12.41, "su": 73.4}]}, "was": {"games": 7452, "su": 72.4, "miss": 13.0, "bare": {"games": 7452, "su": 71.1, "miss": 13.4}}}
+CONFIDENCE = {"hz": [{"lab": "next week", "lo": 1, "hi": 1, "n": 7452, "act": 72.3, "pred": 70.9}, {"lab": "two or three weeks out", "lo": 2, "hi": 3, "n": 13088, "act": 70.5, "pred": 70.2}, {"lab": "four to six weeks out", "lo": 4, "hi": 6, "n": 14824, "act": 69.2, "pred": 69.4}, {"lab": "seven or more weeks out", "lo": 7, "hi": 99, "n": 12408, "act": 67.4, "pred": 67.8}], "steady": {"n": 2077, "pred": 70.9, "act": 72.8}, "updown": {"n": 2077, "pred": 70.4, "act": 70.4}}
+MOMENTUM = {"seasons": "2014 to 2025", "games": 6920, "carry": {"n": 13339, "corr": 0.034, "hot": 51.4, "hotN": 2623, "cold": 48.2, "coldN": 2595}, "fav": {"hot": {"n": 1384, "pred": 74.6, "act": 75.9}, "cold": {"n": 1384, "pred": 67.8, "act": 68.4}}, "fix": {"n": 6920, "gain": 0.002, "win": -0.07, "better": 7, "of": 12}, "upL": {"n": 677, "ltf": -0.2, "se": 0.6, "won": 53.0, "pos": 5, "yrs": 12}, "upW": {"n": 668, "ltf": 0.1, "se": 0.6, "won": 45.5, "pos": 6, "yrs": 12}}
+LEAGUE_CHECK = {"seasons": "2014 to 2025", "pp": {"n": 238, "su": 72.3, "miss": 13.3}, "cross": {"n": 626, "su": 82.4, "short": 5.7, "won": 83.5, "by": 18.9, "before": 10.4}, "lean": [{"lg": "SEC", "n": 78, "by": 0.2, "se": 1.9, "beat": 38}, {"lg": "Big Ten", "n": 64, "by": -1.5, "se": 2.3, "beat": 29}, {"lg": "Big 12", "n": 42, "by": 7.2, "se": 2.4, "beat": 30}, {"lg": "ACC", "n": 158, "by": -4.2, "se": 1.3, "beat": 59}, {"lg": "Pac-12", "n": 40, "by": 1.3, "se": 2.6, "beat": 23}, {"lg": "Notre Dame", "n": 94, "by": 4.1, "se": 1.7, "beat": 59}], "rec": [{"lg": "SEC", "w": 93, "l": 71, "by": 2.6}, {"lg": "Big Ten", "w": 72, "l": 77, "by": -0.4}, {"lg": "Big 12", "w": 55, "l": 59, "by": 1.0}, {"lg": "ACC", "w": 88, "l": 157, "by": -6.6}, {"lg": "Pac-12", "w": 49, "l": 47, "by": -2.8}, {"lg": "Notre Dame", "w": 82, "l": 28, "by": 12.8}], "pairs": [{"a": "SEC", "b": "ACC", "w": 54, "l": 41, "by": 3.7}, {"a": "SEC", "b": "Big 12", "w": 17, "l": 12, "by": 0.8}, {"a": "SEC", "b": "Big Ten", "w": 8, "l": 9, "by": 0.3}, {"a": "Big Ten", "b": "ACC", "w": 26, "l": 23, "by": 1.5}, {"a": "Big Ten", "b": "Big 12", "w": 19, "l": 15, "by": 1.3}, {"a": "Big 12", "b": "ACC", "w": 17, "l": 12, "by": 3.5}], "b12Early": 41, "top25": {"SEC": 7.0, "Pac-12": 3.0, "Big 12": 3.9, "Big Ten": 4.8, "ACC": 3.8, "Other": 1.6, "Notre Dame": 0.8}, "without": {"su": 71.9, "miss": 13.3}}
+BUYSELL = {"seasons": "2014 to 2025", "weeks": 132, "sell": {"n": 398, "per": 3.0, "before": 79.0, "exp": 41.7, "act": 40.3, "w": 453, "l": 671, "none": 20, "of": 12, "rec": 60.8, "seasons": 12}, "buy": {"n": 753, "per": 5.7, "before": 43.4, "exp": 59.5, "act": 58.7, "w": 1260, "l": 885, "none": 16, "of": 12, "rec": 56.0, "seasons": 12}}
+VSLINE = {"seasons": "2014 to 2025", "games": 7450, "split": {"n": 896, "w": 379, "l": 517, "pct": 42.3, "seasons": 0, "of": 12, "early": {"n": 466, "w": 165, "l": 301, "pct": 35.4}, "late": {"n": 430, "w": 214, "l": 216, "pct": 49.8}}, "gaps": [{"lo": 0, "n": 7450, "w": 3649, "l": 3667, "beat": 49.9, "closer": 44.1}, {"lo": 3, "n": 4063, "w": 2011, "l": 1976, "beat": 50.4, "closer": 41.7}, {"lo": 7, "n": 1418, "w": 710, "l": 685, "beat": 50.9, "closer": 37.4}, {"lo": 10, "n": 605, "w": 295, "l": 300, "beat": 49.6, "closer": 32.6}]}
+FRAUD = {"seasons": "2014 to 2025", "gap": 8, "alert": 20, "weeks": 107, "flag": {"n": 1103, "teams": 325, "before": 86.1, "act": 59.6, "exp": 61.8, "w": 3914, "l": 2649}, "watch": {"n": 658, "teams": 249, "before": 85.3, "act": 60.8, "exp": 62.9, "w": 2264, "l": 1462}, "hot": {"n": 445, "teams": 166, "before": 87.4, "act": 58.2, "exp": 60.3, "w": 1650, "l": 1187}, "not": {"n": 2060, "teams": 443, "before": 84.1, "act": 68.8, "exp": 68.7, "w": 7802, "l": 3545}, "held": 12, "of": 12, "same": [{"rec": "3-0", "fl": 59.6, "flN": 154, "no": 66.5, "noN": 235}, {"rec": "4-0", "fl": 61.7, "flN": 116, "no": 70.6, "noN": 159}, {"rec": "5-0", "fl": 61.0, "flN": 82, "no": 76.1, "noN": 111}, {"rec": "4-1", "fl": 55.1, "flN": 70, "no": 66.3, "noN": 122}]}
 #backtest>>
 
 POWER = ["ACC", "Big 12", "Big Ten", "SEC"]
@@ -223,7 +225,7 @@ def z(s):
 
 
 def resume_z(sor_z, qw_z, mar_z):
-    """The résumé grade from its three pieces, each already a standard score across FBS."""
+    """The resume grade from its three pieces, each already a standard score across FBS."""
     return z(RESUME["sor"] * sor_z + RESUME["qw"] * qw_z + RESUME["mar"] * mar_z)
 
 def ridge(X, y, w, alpha, n_free):
@@ -774,7 +776,7 @@ def stat_fields(row):
 
 
 def record_parts(P, done):
-    """Each team's record and the pieces of the résumé, from the power ratings P and the finished games."""
+    """Each team's record and the pieces of the resume, from the power ratings P and the finished games."""
     teams, pw = P["teams"], P["pw"]
     tset = set(teams)
     pw_rank = pw.rank(ascending=False, method="min")
@@ -941,6 +943,39 @@ def merge_pick(a, b):
     return {**a, **b}
 
 
+def fill_finals(sched, prev=None):
+    """Finals the public schedule file does not have yet. Two places can supply one: CollegeFootballData's scores
+    (raw/cfb_scores.json, pulled every run, which mark a game final within minutes), and the copy of the site already
+    live, so a final shown once never disappears if a later pull misses it. A score is only filled in for a game already
+    in the schedule, with the same home team, that the schedule does not have as final. The schedule file's own final
+    always wins once it arrives. Nothing here goes into the ratings until the week is in the books, which still needs the
+    play-by-play."""
+    sched = sched.copy()
+    sched["completed"] = sched.completed.fillna(False).astype(bool)
+    have = sched.completed & sched.home_points.notna() & sched.away_points.notna()
+    home_of = dict(zip(sched.game_id, sched.home_team))
+    found = {}
+    path = os.path.join(RAW, "cfb_scores.json")
+    if os.path.exists(path):
+        try:
+            for g in json.load(open(path, encoding="utf-8")).get("games", []):
+                if g.get("completed") and g.get("hp") is not None and g.get("ap") is not None and home_of.get(g.get("id")) == g.get("home"):
+                    found[g["id"]] = (float(g["hp"]), float(g["ap"]))
+        except Exception as e:
+            print("note: could not read raw/cfb_scores.json:", repr(e)[:120])
+    if prev and prev.get("meta", {}).get("season") == SEASON:
+        for g in prev.get("games", []):
+            if g.get("hp") is not None and g.get("ap") is not None and g.get("id") not in found and home_of.get(g.get("id")) == g.get("h"):
+                found[g["id"]] = (float(g["hp"]), float(g["ap"]))
+    fill = sched.game_id.isin(found) & ~have
+    if fill.any():
+        sched.loc[fill, "home_points"] = sched.loc[fill, "game_id"].map(lambda i: found[i][0])
+        sched.loc[fill, "away_points"] = sched.loc[fill, "game_id"].map(lambda i: found[i][1])
+        sched.loc[fill, "completed"] = True
+        print(f"note: {int(fill.sum())} final {'score' if fill.sum() == 1 else 'scores'} filled in ahead of the schedule file")
+    return sched
+
+
 def load_prev(path):
     """Read an earlier data snapshot (data.json, or the site file with the data inside it), if there is one."""
     if not path or not os.path.exists(path):
@@ -960,6 +995,7 @@ def load_prev(path):
 # ---- build -----------------------------------------------------------------
 def build(prev_path=None):
     sched, pbp, colors = load()
+    sched = fill_finals(sched, load_prev(prev_path))
     lines = game_lines(pbp)
     api = load_api()
     A = api["data"] if api else {}
@@ -1175,7 +1211,7 @@ def build(prev_path=None):
                  "ref": round(ref, 2), "k": round(k, 2), "games": int(len(done)), "fbsGames": int(len(P["fbs"])),
                  "lined": int(sum(1 for g in P["fbs"].game_id if lines.get(g, (None,))[0] is not None)),
                  "book": "DraftKings", "apWeek": ap_week, "wt": WEIGHTS, "formula": FORMULA, "leagues": leagues,
-                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "mom": MOMENTUM, "lgc": LEAGUE_CHECK, "bs": BUYSELL, "vs": VSLINE, "sk": RAW_KEYS, "pk": PROFILE_KEYS,
+                 "slope": {str(k_): v_ for k_, v_ in SLOPE.items()}, "bt": BACKTEST, "cfd": CONFIDENCE, "mom": MOMENTUM, "lgc": LEAGUE_CHECK, "bs": BUYSELL, "vs": VSLINE, "fr": FRAUD, "sk": RAW_KEYS, "pk": PROFILE_KEYS,
                  "lastWeek": int(sched.week.max()), "api": bool(api),
                  "pulled": (lambda d: f"{d.strftime('%b')} {d.day}")(pd.Timestamp(api["pulledAt"]).tz_convert("America/New_York")) if api else None},
         "teams": out_teams, "games": games, "picks": picks, "calls": calls,

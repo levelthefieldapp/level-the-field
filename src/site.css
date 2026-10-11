@@ -217,6 +217,7 @@ h3{font-stretch:76%;font-weight:800;font-size:1.12rem;margin:18px 0 6px}
 .rows li.two .meta{font-weight:750;color:var(--ink)}
 .rows .l1{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
 .rows .sub2{display:block;color:var(--muted);font-size:.88rem}
+.rows .sub2 + .sub2{margin-top:4px}
 .rows .l1 .who{display:inline-flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
 .rows.narrowlist{max-width:580px}
 .cnum{font-stretch:72%;font-weight:850;font-size:1.12rem;font-variant-numeric:tabular-nums}
@@ -243,6 +244,7 @@ h3{font-stretch:76%;font-weight:800;font-size:1.12rem;margin:18px 0 6px}
 a.teambtn{display:flex;align-items:center;gap:11px;padding:2px 4px;width:100%;min-height:44px}
 .tn{font-weight:750;font-size:1.02rem;white-space:nowrap}
 .h2h{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid color-mix(in srgb,var(--pylon) 60%,transparent);background:color-mix(in srgb,var(--pylon) 10%,transparent);font-size:.75rem;font-weight:650;line-height:1.55;white-space:nowrap}
+.h2h.won{border-color:color-mix(in srgb,var(--good) 55%,transparent);background:color-mix(in srgb,var(--good) 10%,transparent)}
 .rec small{color:var(--muted);margin-left:6px}
 .idx{min-width:172px}
 .idx b{display:inline-block;width:3.1em;text-align:right;font-variant-numeric:tabular-nums;font-stretch:72%;font-weight:850;font-size:1.15rem;margin-right:10px}
@@ -573,7 +575,7 @@ a.gline:hover .gt>span:last-child{text-decoration:underline;text-underline-offse
 .champ span{display:block;font-size:.76rem;opacity:.92}
 .champ b{display:block;font-weight:900;font-stretch:70%;font-size:1.55rem;line-height:1.05;margin:1px 0}
 
-/* ---------- build your own, blind résumé, not found ---------- */
+/* ---------- build your own, blind resume, not found ---------- */
 .wgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px 44px;margin-top:8px}
 .slider{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
 .slider label{font-weight:750;font-stretch:88%}
@@ -589,6 +591,8 @@ a.gline:hover .gt>span:last-child{text-decoration:underline;text-underline-offse
 .rev small{display:block;color:var(--muted);font-size:.8rem}
 .blindc h3{font-size:.84rem;font-weight:750;color:var(--muted);margin:14px 0 4px}
 ul.plain{margin:0;padding-left:18px} ul.plain li{margin:3px 0}
+.trial .verdict{margin:14px 0 6px}
+.trial .dgrid h3{margin:14px 0 6px}
 .nf{text-align:center;padding:60px 0 30px}
 .nf .big{font-weight:900;font-style:italic;font-stretch:64%;font-size:clamp(4rem,16vw,9rem);line-height:.9;color:var(--pylon)}
 .nf .pdek{margin:0 auto 18px}
@@ -792,8 +796,9 @@ body:not(.about-open) .key{display:none}
   .controls .seg{grid-column:1/-1}
   .filterbtn{display:inline-flex;align-items:center;gap:8px;justify-self:start;min-height:44px;padding:0 14px;background:var(--surface);color:var(--ink);border:2px solid var(--ink);font-weight:750;cursor:pointer}
   .filterbtn svg{width:18px;height:18px}
-  .controls label{display:none;font-size:0;gap:0}
-  body.filters-open .controls label{display:flex;grid-column:1/-1}
+  #controls label{display:none;font-size:0;gap:0}
+  body.filters-open #controls label{display:flex;grid-column:1/-1}
+  .sec .controls label{grid-column:1/-1}
   body.has-filters:not(.filters-open) .fhide{display:none}
   .controls select,.controls input{width:100%;min-width:0;font-size:1rem;min-height:44px}
 }

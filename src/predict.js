@@ -18,7 +18,7 @@ const TIERS = [
   {k:'below',   min:38,  name:'Below average',      what:'38 to 46'},
   {k:'low',     min:-1,  name:'Struggling',         what:'under 38'},
 ];
-const tierOf = t => TIERS.find(x => t.idx >= x.min) || TIERS[TIERS.length - 1];
+const tierOf = t => { const v = t.h2hUp ? Math.max(t.idx, t.h2hUp.over.idx) : t.idx; return TIERS.find(x => v >= x.min) || TIERS[TIERS.length - 1]; };      // a team ranked ahead on head-to-head joins the tier of the team they passed
 const tierTag = rank => `<span class="tier t${Math.min(5, ['Elite','Excellent','Good','Average','Below average','Poor'].indexOf(tier(rank)))}">${tier(rank)}</span>`;
 
 /* last week's stat ranks, for trend arrows */
@@ -139,7 +139,7 @@ const pct = v => v >= .995 ? '>99%' : v < .005 ? '<1%' : Math.round(v*100) + '%'
 /* what this week's game is worth */
 function stakes(t){
   const e = t.sched.find(x => !x.game.done); if (!e) return null;
-  const p = winProb(t, e), g = gammaAt(e.wk), rk = zv => 1 + T.filter(x => x !== t && x.cz > zv).length;
+  const p = winProb(t, e), g = gammaAt(e.wk), rk = zv => h2hOrder(T, x => 50 + 14*(x === t ? zv : x.cz), M.through).order.indexOf(t) + 1;      // the same order the rankings use, head-to-head included
   return {e, p, win: rk(t.cz + g*(1-p)), lose: rk(t.cz - g*p)};
 }
 

@@ -24,21 +24,23 @@ from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "src")
-JS = ["core.js", "brand.js", "statdefs.json", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js",
+JS = ["core.js", "brand.js", "statdefs.json", "gloss.js", "predict.js", "views1.js", "views2.js", "views3.js", "views4.js", "views5.js", "views6.js", "views7.js", "views8.js",
       "momentum.js", "scorecard.js", "stats2.js", "profile.js", "cards.js", "app.js"]
 NAME = "Level the Field"
 SHARE = ("Every college football team on one scale, built from this season's games and nothing else. "
          "No polls, no preseason rankings, no betting lines. Rankings, picks and an upset watch, graded every week.")
-PARTS = {"res": "résumé", "off": "offense", "def": "defense", "mar": "scoring margin", "h1": "the first half"}      # the five parts of the LTF Index, as they read in a sentence
+PARTS = {"res": "resume", "off": "offense", "def": "defense", "mar": "scoring margin", "h1": "the first half"}      # the five parts of the LTF Index, as they read in a sentence
 
 # Every section page that gets its own address: the name on the browser tab and one line about it.
 PAGES = {
     "rankings": ("LTF rankings", "Every FBS team ranked on one scale, 0 to 100, with movement since last week."),
-    "weights": ("Build your own rankings", "Set your own weights for résumé, offense, defense and scoring margin and watch the rankings change."),
+    "weights": ("Build your own rankings", "Set your own weights for resume, offense, defense and scoring margin and watch the rankings change."),
     "conferences": ("Conferences", "Every conference on the same scale: average LTF Index and the record against everyone else."),
     "leagues": ("League strength", "How the leagues have done against each other this season, and a standing check on whether the rankings play favorites."),
     "momentum": ("Momentum", "Who is heating up and who is cooling off, by rating trend, recent play, streaks and upsets."),
     "radar": ("Under the radar", "Teams the LTF Index rates well that the polls have not caught up with."),
+    "fraud": ("Fraud watch", "Teams that look better on paper than they play: each team's resume and AP rank next to how they actually play, with the case on both sides."),
+    "bye": ("Did you beat the bye?", "Who climbed in the LTF rankings during a bye week, who slipped, and why. Plus the results that would help the teams off this week."),
     "luck": ("Luck and steadiness", "Which teams have been helped or hurt by fumbles, tipped passes and kicking, and which play to the same level every week."),
     "games": ("Scores and schedule", "Every game by week, with the LTF line and the final score."),
     "picks": ("Picks", "The LTF pick for every game this week, with a confidence score and the reasons behind it."),
@@ -50,7 +52,7 @@ PAGES = {
     "leaders": ("Stat leaders", "Box-score leaders for every FBS team, offense and defense: totals, per game and per play, nationally or by conference."),
     "styles": ("How teams play", "Who runs and who throws in close games, set against what LTF says they do well, on offense and defense."),
     "compare": ("Compare two teams", "Any two teams side by side, with the LTF line between them."),
-    "blind": ("Blind résumé", "Two real teams with the names taken off. Pick the better one, then see who they are."),
+    "blind": ("Blind resume", "Two real teams with the names taken off. Pick the better one, then see who they are."),
     "playoff": ("Playoff picture", "The 12-team bracket if the season ended today and the committee went by the LTF Index."),
     "odds": ("Season odds", "Each team's chance to make the playoff, win their conference and reach a bowl, from 2,500 simulated seasons."),
     "scorecard": ("Scorecard", "LTF graded every week next to SP+, FPI and the betting line, on the same games."),
@@ -117,6 +119,40 @@ def ordinal(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
+H2H_GAP = 2      # the same as H2H_GAP in src/core.js
+
+
+def h2h_order(rows, data):
+    """The teams in order the way the page does it: by the LTF Index, then the head-to-head rule (see h2hOrder in src/core.js)."""
+    names = {r["t"]["n"] for r in rows}
+    net = {}
+    for g in data["games"]:
+        if g.get("hp") is None or g["w"] > data["meta"]["through"] or g["h"] not in names or g["a"] not in names or g["hp"] == g["ap"]:
+            continue
+        w, l = (g["h"], g["a"]) if g["hp"] > g["ap"] else (g["a"], g["h"])
+        net[(w, l)] = net.get((w, l), 0) + 1
+        net[(l, w)] = net.get((l, w), 0) - 1
+    val = {r["t"]["n"]: 50 + 14 * r["z"] for r in rows}
+    o = [r["t"]["n"] for r in sorted(rows, key=lambda r: -r["z"])]
+    pos0 = {n: i for i, n in enumerate(o)}
+    pairs = sorted(((w, l, val[l] - val[w]) for (w, l), v in net.items() if v > 0 and 0 < val[l] - val[w] <= H2H_GAP),
+                   key=lambda p: (pos0[p[1]], pos0[p[0]]))
+    for w, l, _ in pairs:
+        iw, il = o.index(w), o.index(l)
+        if iw < il:
+            continue
+        to = il
+        for i in range(il, iw):
+            if net.get((o[i], w), 0) > 0:
+                to = i + 1
+        if to >= iw:
+            continue
+        o.pop(iw)
+        o.insert(to, w)
+    by = {r["t"]["n"]: r for r in rows}
+    return [by[n] for n in o]
+
+
 def standings(data):
     """Rank and LTF Index for every team, worked out the way the page does it."""
     teams = data["teams"]
@@ -125,7 +161,7 @@ def standings(data):
     mean = sum(raw) / len(raw)
     sd = math.sqrt(sum((v - mean) ** 2 for v in raw) / len(raw)) or 1.0
     rows = [{"t": t, "idx": max(0.0, min(100.0, 50 + 14 * (v - mean) / sd)), "z": (v - mean) / sd} for t, v in zip(teams, raw)]
-    for i, r in enumerate(sorted(rows, key=lambda r: -r["z"])):
+    for i, r in enumerate(h2h_order(rows, data)):
         r["rank"] = i + 1
     part = {k: {t["n"]: i + 1 for i, t in enumerate(sorted(teams, key=lambda t: -t["z"][k]))} for k in WEIGHTS}
     for r in rows:
@@ -346,7 +382,7 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
     week = [g for g in data["games"] if g["h"] in st and g["a"] in st and g["w"] in (m.get("next"), m["through"])]
     confs = sorted({t["c"] for t in data["teams"] if t["c"] != "Independent"})
     wanted = ["list/top10"] + [f"team/{slug(n)}" for n in st] + [f"game/{g['id']}" for g in week] + [f"conference/{slug(c)}" for c in confs] + \
-             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell", "list/radar", "list/upsets", "list/movers", "list/momentum", "list/luck", "list/market"] + \
+             ["list/tiers", "list/polls", "list/conferences", "list/receipts", "list/buysell", "list/radar", "list/upsets", "list/movers", "list/momentum", "list/luck", "list/market", "list/fraud", "list/bye"] + \
              [f"stat/{d['id']}" for d in statdefs]
     have = draw_cards(out, wanted) if cards else set()
     pic = lambda name, fallback="og.png": f"cards/{name}.png" if name in have else fallback
@@ -355,7 +391,7 @@ def build_site(data, out, url=None, logos=None, counter=None, cards=True):
 
     pages = [""]
     special = {"rankings": "list/top10", "conferences": "list/conferences", "leagues": "list/conferences", "radar": "list/radar" if "list/radar" in have else "list/polls", "recap": "list/receipts", "scorecard": "list/receipts", "buysell": "list/buysell",
-               "upsets": "list/upsets", "momentum": "list/momentum", "luck": "list/luck", "market": "list/market", "leaders": "stat/points"}
+               "upsets": "list/upsets", "momentum": "list/momentum", "luck": "list/luck", "market": "list/market", "fraud": "list/fraud", "bye": "list/bye", "leaders": "stat/points"}
     for key, (title, desc) in PAGES.items():
         paras = [desc, lead] if key in ("rankings", "teams", "picks", "games", "weights") else [desc]
         page = shell("../", head_tags("../", title, desc, v, url, f"{key}/", pic(special.get(key, "-")), counter), static_view("../", title, paras, nav), v)

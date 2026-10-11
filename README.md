@@ -6,7 +6,7 @@ This repository holds the site and everything that keeps it current. It updates 
 
 ## What happens on its own
 
-Twice a day from August through January, at about 7:17 in the morning and 3:17 in the afternoon Eastern, GitHub runs the update:
+Twice a day from August through January, at about 7:17 in the morning and 3:17 in the afternoon Eastern (5:17 and 1:17 Mountain), every half hour on game nights (Thursdays and Fridays 5 PM to 11:30 PM, Saturdays 10 AM to 1:30 AM Mountain) and Sundays at 9:00 PM Mountain, GitHub runs the update:
 
 1. Gets scores and play-by-play from the public cfbfastR files. These are all the rankings are built from. It also gets the AP poll, SP+, FPI and closing lines from CollegeFootballData, which are shown next to the rankings for comparison and are never part of them.
 2. Rebuilds every number on the site.

@@ -14,7 +14,7 @@ const CONTACT_EMAIL = '';            // put a public contact address here to swi
    the data build, so the page and the numbers cannot drift apart. */
 const WT = D.meta.wt || {res:20, off:25, def:25, mar:20, h1:10};
 const COMP = [
-  {k:'res', name:'Résumé',         col:'Résumé',   w:WT.res, what:'Who a team has beaten and lost to: strength of record, quality wins and scoring margin.'},
+  {k:'res', name:'Resume',         col:'Resume',   w:WT.res, what:'Who a team has beaten and lost to: strength of record, quality wins and scoring margin.'},
   {k:'off', name:'Offense',        col:'Offense',  w:WT.off, what:'How well the offense moves the ball and scores: EPA per play, success rate, points per drive, scoring opportunities, explosive plays and yards.'},
   {k:'def', name:'Defense',        col:'Defense',  w:WT.def, what:'How well the defense prevents the same things, plus stop rate and havoc.'},
   {k:'mar', name:'Scoring margin', col:'Margin',   w:WT.mar, what:'Points a game better than an average team, after allowing for the opponent and home field. A blowout counts for no more than 24.'},
@@ -135,7 +135,38 @@ function compositeZ(w){
   const m = mean(raw), sd = sdev(raw) || 1;
   return raw.map(v => (v-m)/sd);
 }
-{ const r = ranks(compositeZ(DEFAULTS)); T.forEach((t,i)=>{ t.baseRank = r[i]; }); }
+/* Head-to-head (October 11, 2026). The LTF Index puts the teams in order. Then, when two teams are within H2H_GAP
+   points of each other on the LTF Index and one has beaten the other this season, the winner is ranked ahead. Scores,
+   lines and picks do not change, only the order. Pairs are settled from the top of the rankings down, and a team never
+   moves past a team that beat them, so a circle of results (A beat B, B beat C, C beat A) cannot spin. Only games through
+   the week being ranked count, the same games the LTF Index is built from. */
+const H2H_GAP = 2;
+function h2hNet(wk){   // net wins of one FBS team over another, "winner|loser" -> wins minus losses
+  const m = new Map(), add = (k, v) => m.set(k, (m.get(k) || 0) + v);
+  for (const g of G){ if (!g.done || g.w > wk || !byName[g.h] || !byName[g.a] || g.hp === g.ap) continue;
+    const [w, l] = g.hp > g.ap ? [g.h, g.a] : [g.a, g.h]; add(w + '|' + l, 1); add(l + '|' + w, -1); }
+  return m;
+}
+function h2hOrder(ts, val, wk){   // the teams in order: by val (the LTF Index, 0 to 100), then the head-to-head rule
+  const net = h2hNet(wk), beat = (a, b) => (net.get(a.n + '|' + b.n) || 0) > 0;
+  const o = [...ts].sort((a,b) => val(b) - val(a)), pos0 = new Map(o.map((t,i) => [t, i])), pairs = [];
+  for (const [k, v] of net){
+    if (v <= 0) continue;
+    const [wn, ln] = k.split('|'), w = byName[wn], l = byName[ln];
+    if (!pos0.has(w) || !pos0.has(l)) continue;
+    const gap = val(l) - val(w); if (gap > 0 && gap <= H2H_GAP) pairs.push([w, l, gap]);
+  }
+  pairs.sort((x, y) => pos0.get(x[1]) - pos0.get(y[1]) || pos0.get(x[0]) - pos0.get(y[0]));
+  const moved = new Map();
+  for (const [w, l, gap] of pairs){
+    const iw = o.indexOf(w), il = o.indexOf(l); if (iw < il) continue;
+    let to = il; for (let i = il; i < iw; i++) if (beat(o[i], w)) to = i + 1;      // never past a team that beat them
+    if (to >= iw) continue;
+    o.splice(iw, 1); o.splice(to, 0, w); moved.set(w, {over: l, gap});
+  }
+  return {order: o, moved};
+}
+{ const z0 = compositeZ(DEFAULTS), zb = new Map(T.map((t,i) => [t, z0[i]])); h2hOrder(T, t => 50 + 14*zb.get(t), M.through).order.forEach((t,i) => { t.baseRank = i+1; }); }
 const HW = [...new Set(T.flatMap(t => t.h.map(h => h.w)))].sort((a,b) => a-b);     // weeks with a saved snapshot
 let WK = {}, _sim = {};
 const SLOPE_WKS = Object.keys(M.slope).map(Number);
@@ -143,8 +174,10 @@ const slopeAt = wk => M.slope[String(clamp(wk, Math.min(...SLOPE_WKS), Math.max(
 const SLOPE = slopeAt(M.through);
 const FCS = {cz: M.fcs / SLOPE, fcsTeam: true};                                      // stand-in for any FCS opponent
 function recompute(){
-  const cz = compositeZ(W), r = ranks(cz);
-  T.forEach((t,i)=>{ t.cz = cz[i]; t.idx = clamp(50+14*cz[i],0,100); t.rank = r[i]; t.hist = {}; });
+  const cz = compositeZ(W);
+  T.forEach((t,i)=>{ t.cz = cz[i]; t.idx = clamp(50+14*cz[i],0,100); t.hist = {}; t.h2hUp = null; t.h2hDown = []; });
+  { const o = h2hOrder(T, t => 50 + 14*t.cz, M.through); o.order.forEach((t,i) => { t.rank = i+1; });
+    for (const [w, x] of o.moved){ w.h2hUp = x; x.over.h2hDown.push({by: w, gap: x.gap}); } }
   const tot = COMP.reduce((s,c)=>s+W[c.k],0) || 1;
   WK = {};
   for (const wk of HW){   // the same score for every earlier week, so movement, trends and old lines follow the weights
@@ -152,10 +185,11 @@ function recompute(){
     const rows = T.map(t => [t, cur ? t : t.h.find(h => h.w===wk)]).filter(x => x[1]);
     const parts = rows.map(([t,h]) => cur ? {...t.z} : {res:h.r, off:h.o, def:h.d, mar:h.m, h1:h.f});
     const raw = parts.map(p => COMP.reduce((s,c)=>s+W[c.k]*p[c.k],0)/tot);
-    const m = mean(raw), sd = sdev(raw) || 1, zs = raw.map(v => (v-m)/sd), rk = ranks(zs);
+    const m = mean(raw), sd = sdev(raw) || 1, zs = raw.map(v => (v-m)/sd), zt = new Map(rows.map(([t],i) => [t, zs[i]]));
+    const rk = new Map(h2hOrder(rows.map(([t]) => t), t => 50 + 14*zt.get(t), wk).order.map((t,i) => [t, i+1]));
     const prk = Object.fromEntries(COMP.map(c => [c.k, ranks(parts.map(p => p[c.k]))]));
     WK[wk] = {sd};
-    rows.forEach(([t,h],i) => { t.hist[wk] = {z:zs[i], idx:clamp(50+14*zs[i],0,100), rank:rk[i], rec: cur ? `${t.w}-${t.l}` : h.rec, parts:parts[i], prk:Object.fromEntries(COMP.map(c => [c.k, prk[c.k][i]]))}; });
+    rows.forEach(([t,h],i) => { t.hist[wk] = {z:zs[i], idx:clamp(50+14*zs[i],0,100), rank:rk.get(t), rec: cur ? `${t.w}-${t.l}` : h.rec, parts:parts[i], prk:Object.fromEntries(COMP.map(c => [c.k, prk[c.k][i]]))}; });
   }
   const prevWk = HW.length > 1 ? HW[HW.length-2] : null;
   T.forEach(t => { const p = prevWk != null && t.hist[prevWk]; t.prevRank = p ? p.rank : null; t.move = p ? p.rank - t.rank : null; });
@@ -163,7 +197,7 @@ function recompute(){
   for (const key of ['tier','c']){
     const groups = {};
     T.forEach(t => (groups[t[key]] = groups[t[key]] || []).push(t));
-    Object.values(groups).forEach(g => g.sort((a,b)=>b.cz-a.cz).forEach((t,i)=>{ t[key+'Rank'] = i+1; t[key+'Size'] = g.length; }));
+    Object.values(groups).forEach(g => g.sort((a,b)=>a.rank-b.rank).forEach((t,i)=>{ t[key+'Rank'] = i+1; t[key+'Size'] = g.length; }));
   }
   for (const c of CONFS){ c.avg = mean(c.teams.map(t => t.idx)); c.sorted = [...c.teams].sort((a,b) => a.rank-b.rank); }
   [...CONFS].filter(c => c.tier).sort((a,b) => b.avg-a.avg).forEach((c,i) => { c.rank = i+1; });

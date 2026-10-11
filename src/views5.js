@@ -1,4 +1,4 @@
-/* ================= blind résumé ================= */
+/* ================= blind resume ================= */
 function blindPairs(){   // teams LTF has close together, where one has the bigger name
   const top = byRank().filter(t => t.rank <= 60 && t.g.length >= 3), out = [];
   for (let i = 0; i < top.length; i++) for (let j = i+1; j < top.length; j++){
@@ -13,7 +13,7 @@ function blindPairs(){   // teams LTF has close together, where one has the bigg
 }
 function viewBlind(){
   const pairs = blindPairs();
-  if (!pairs.length) return {title:'Blind résumé', top: pageTop('Blind résumé', 'Two teams, no names. Pick the better one.'), body:'<p class="empty">The blind résumé test starts once teams have played three games.</p>'};
+  if (!pairs.length) return {title:'Blind resume', top: pageTop('Blind resume', 'Two teams, no names. Pick the better one.'), body:'<p class="empty">The blind resume test starts once teams have played three games.</p>'};
   const n = ((parseInt(R.q.n, 10) || 1) - 1 + pairs.length*1000) % pairs.length, [A, B] = pairs[n], pick = R.q.pick === 'a' || R.q.pick === 'b' ? R.q.pick : null;
   const wins = t => t.g.filter(e => e.pf > e.pa).map(e => ({e, o: byName[e.opp]})).sort((x,y) => (x.o ? x.o.rank : 999) - (y.o ? y.o.rank : 999));
   const losses = t => t.g.filter(e => e.pf < e.pa).map(e => ({e, o: byName[e.opp]}));
@@ -36,7 +36,7 @@ function viewBlind(){
         ${apPick ? `<p>The AP poll has ${esc(apPick.n)} higher${apPick === chosen ? ', the same as you' : ''}.</p>` : M.apWeek == null ? '' : '<p>The AP poll ranks neither team.</p>'}
         <p><a class="btn" href="${L('compare', null, {a:A.slug, b:B.slug})}">Compare them in full</a></p></div></div></section>`;
   }
-  return {title:'Blind résumé', top: pageTop('Blind résumé', 'Two real teams with the names taken off. Read what each has done this season and pick the better one. Then see who they are, and whether the AP poll agrees with you.'),
+  return {title:'Blind resume', top: pageTop('Blind resume', 'Two real teams with the names taken off. Read what each has done this season and pick the better one. Then see who they are, and whether the AP poll agrees with you.'),
     body: `<p class="status">Matchup ${n+1} of ${pairs.length} this week.</p><div class="panels">${card(A, 'Team A')}${card(B, 'Team B')}</div>${result}
       <p class="next"><a class="btn go" href="${L('blind', null, {n: n+2 > pairs.length ? 1 : n+2})}">Next matchup</a> &nbsp; <a class="txt" href="${L('radar')}">Under the radar</a></p>`};
 }

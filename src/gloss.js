@@ -3,11 +3,11 @@
 const GLOSS = {
   adjrank:["LTF rank", "Where LTF ranks the team on the same number once their opponents are taken into account, with garbage time left out. When it is far from the raw rank, the schedule is shaping the raw number."],
   index:["LTF Index", "One score for every team, from 0 to 100. An average team is 50, a good one is in the 60s, and the very best are near 80 or higher. It is built from this season's games and nothing else: results, play-by-play stats and scoring margin. No polls, no preseason rankings, no earlier seasons and no betting lines."],
-  ltf:["LTF Index", "LTF is short for Level the Field. The LTF Index is the site's own formula: résumé 20%, offense 25%, defense 25%, scoring margin 20% and the first half 10%. Every part comes from this season's games."],
+  ltf:["LTF Index", "LTF is short for Level the Field. The LTF Index is the site's own formula: resume 20%, offense 25%, defense 25%, scoring margin 20% and the first half 10%. Every part comes from this season's games."],
   rec:["Record", "Wins and losses. The smaller numbers next to it are the conference record."],
   lw:["Last week", "Where the team ranked a week ago, and how many spots they have moved since."],
   change:["Change", "How many spots the team moved in the national ranking since last week."],
-  res:["Résumé", "What the team has earned on the field so far: who they beat, who they lost to, and by how much. The number is their national rank, so 1 is the best résumé in the country."],
+  res:["Resume", "What the team has earned on the field so far: who they beat, who they lost to, and by how much. The number is their national rank, so 1 is the best resume in the country."],
   off:["Offense", "How good the offense is at moving the ball and scoring, after allowing for the defenses they have faced. The number is their national rank."],
   def:["Defense", "How good the defense is at stopping drives and keeping points off the board, after allowing for the offenses they have faced. The number is their national rank."],
   mar:["Scoring margin", "Points a game better than an average team, after allowing for each opponent and for home field. A blowout counts for no more than 24 points. The number is the national rank."],
